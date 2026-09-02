@@ -6,41 +6,14 @@
   "packageManager": "pnpm@11.25.0",
   "scripts": {
     "dev": "pnpm run --parallel /^dev:/",
-    "dev:api": "tsx watch src/index.ts",
+    "dev:api": "pnpm --filter @prd/api dev",
     "dev:web": "pnpm --filter @prd/web dev",
-    "build": "pnpm --filter @prd/web build && tsc -p tsconfig.json",
-    "build:api": "tsc -p tsconfig.json",
-    "start": "node dist/index.js",
-    "test": "vitest run",
-    "test:watch": "vitest",
+    "build": "pnpm --filter @prd/web build && pnpm --filter @prd/api build",
+    "build:api": "pnpm --filter @prd/api build",
+    "build:web": "pnpm --filter @prd/web build",
+    "start": "pnpm --filter @prd/api start",
+    "test": "pnpm --filter @prd/api test",
+    "test:api": "pnpm --filter @prd/api test",
     "test:web": "pnpm --filter @prd/web test"
-  },
-  "dependencies": {
-    "@fastify/cors": "^11.3.0",
-    "@fastify/multipart": "^10.1.1",
-    "@fastify/static": "^10.1.3",
-    "@langchain/core": "^1.2.9",
-    "@langchain/langgraph": "^1.4.13",
-    "@langchain/langgraph-checkpoint": "^1.1.5",
-    "@langchain/openai": "^1.5.11",
-    "bcryptjs": "^3.0.3",
-    "dotenv": "^17.4.2",
-    "fastify": "^5.12.1",
-    "jszip": "^3.10.1",
-    "langchain": "^1.5.10",
-    "mammoth": "^1.12.2",
-    "openai": "^7.8.0",
-    "pdf-parse": "^2.4.5",
-    "pino": "^10.3.1",
-    "pino-pretty": "^13.1.3",
-    "uuid": "^14.0.2",
-    "zod": "^4.5.4"
-  },
-  "devDependencies": {
-    "@types/bcryptjs": "^3.0.0",
-    "@types/node": "^26.4.0",
-    "tsx": "^4.23.13",
-    "typescript": "^7.0.2",
-    "vitest": "^4.1.11"
   }
 }

@@ -13,3 +13,6 @@ v20.20.2/
 tmp-test.*
 *.tmp.docx
 *.tmp.pdf
+/web/
+*.tsbuildinfo
+apps/api/dist/

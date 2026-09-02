@@ -1,6 +1,13 @@
-import "dotenv/config";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import dotenv from "dotenv";
 import { loadConfig } from "./config.js";
+import { REPO_ROOT } from "./paths.js";
 import { buildServer } from "./server.js";
+
+const apiRoot = path.resolve(fileURLToPath(new URL("..", import.meta.url)));
+dotenv.config({ path: path.join(REPO_ROOT, ".env") });
+dotenv.config({ path: path.join(apiRoot, ".env") });
 
 const config = loadConfig();
 

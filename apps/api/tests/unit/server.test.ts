@@ -1,9 +1,15 @@
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { FastifyInstance } from "fastify";
 import type { AppConfig } from "../../src/config.js";
 import { buildServer } from "../../src/server.js";
 import { TaskService, type TaskGraphRunner } from "../../src/services/taskService.js";
 import type { Storage, StoredFile } from "../../src/storage/index.js";
+
+const repoPublic = path.resolve(
+  fileURLToPath(new URL("../../../../public", import.meta.url)),
+);
 
 const config: AppConfig = {
   port: 3000,
@@ -16,6 +22,13 @@ const config: AppConfig = {
   maxTotalBytes: 2048,
   maxFiles: 2,
   langsmithTracing: false,
+  adminUser: "admin",
+  adminPassword: "admin-change-me",
+  sessionTtlMs: 60_000,
+  cookieSecure: false,
+  webDistDir: path.join(repoPublic, "web"),
+  publicDir: repoPublic,
+  corsOrigin: "http://localhost:5173",
 };
 
 const runner: TaskGraphRunner = {

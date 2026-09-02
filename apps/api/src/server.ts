@@ -1,4 +1,3 @@
-import { fileURLToPath } from "node:url";
 import cors from "@fastify/cors";
 import multipart from "@fastify/multipart";
 import fastifyStatic from "@fastify/static";
@@ -40,7 +39,7 @@ export async function buildServer(
     },
   });
   await app.register(fastifyStatic, {
-    root: fileURLToPath(new URL("../public", import.meta.url)),
+    root: config.publicDir,
   });
 
   await app.register(healthRoutes, { prefix: "/api" });

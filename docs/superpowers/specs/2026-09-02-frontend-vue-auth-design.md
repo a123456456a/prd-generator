@@ -45,14 +45,17 @@
 ```
 prd-generator/
 ├── apps/
-│   ├── api/                 # 现有后端迁入（Fastify + LangGraph）
-│   └── web/                 # Vue 3 + Vite + TypeScript
-├── packages/                # 可选：共享类型（后期再抽）
+│   ├── api/                 # Fastify + LangGraph（@prd/api）
+│   └── web/                 # Vue 3 + Vite + Tailwind（@prd/web）
+├── public/                  # 静态资源；web 构建产物在 public/web/
+├── uploads/                 # 上传文件（api 解析到仓库根）
+├── docs/
 ├── pnpm-workspace.yaml
-└── package.json             # 根脚本：dev / build / test
+├── package.json             # 根编排脚本：dev / build / test
+└── .env.example
 ```
 
-一期也可先在仓库根保留 api、仅新增 `apps/web`，再在实现 plan 中安排迁入；**对外契约以「api + web 两应用」为准**。
+工作区包：`apps/*`（`@prd/api`、`@prd/web`）。根 `package.json` 仅负责编排，不含业务依赖。
 
 ### 2.2 Web 技术栈
 

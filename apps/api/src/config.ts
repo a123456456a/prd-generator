@@ -1,3 +1,6 @@
+import path from "node:path";
+import { REPO_ROOT } from "./paths.js";
+
 export type AppConfig = {
   port: number;
   apiKey: string;
@@ -14,8 +17,13 @@ export type AppConfig = {
   sessionTtlMs: number;
   cookieSecure: boolean;
   webDistDir: string;
+  publicDir: string;
   corsOrigin: string;
 };
+
+function resolveRepoPath(value: string): string {
+  return path.isAbsolute(value) ? value : path.resolve(REPO_ROOT, value);
+}
 
 export function loadConfig(): AppConfig {
   return {
@@ -24,7 +32,7 @@ export function loadConfig(): AppConfig {
     openaiApiKey: process.env.OPENAI_API_KEY ?? "",
     extractModel: process.env.EXTRACT_MODEL ?? "gpt-4o-mini",
     prdModel: process.env.PRD_MODEL ?? "gpt-4o",
-    uploadDir: process.env.UPLOAD_DIR ?? "uploads",
+    uploadDir: resolveRepoPath(process.env.UPLOAD_DIR ?? "uploads"),
     maxFileBytes: 50 * 1024 * 1024,
     maxTotalBytes: 200 * 1024 * 1024,
     maxFiles: 20,
@@ -35,7 +43,8 @@ export function loadConfig(): AppConfig {
       process.env.SESSION_TTL_MS ?? 7 * 24 * 60 * 60 * 1000,
     ),
     cookieSecure: process.env.COOKIE_SECURE === "true",
-    webDistDir: process.env.WEB_DIST_DIR ?? "public/web",
+    webDistDir: resolveRepoPath(process.env.WEB_DIST_DIR ?? "public/web"),
+    publicDir: resolveRepoPath(process.env.PUBLIC_DIR ?? "public"),
     corsOrigin: process.env.CORS_ORIGIN ?? "http://localhost:5173",
   };
 }

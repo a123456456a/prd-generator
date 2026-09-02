@@ -4,7 +4,7 @@
 
 **Goal:** 在已完成 Task 1–6 的后端上补齐双鉴权 API 与 Vue 3 工作台，替代原计划「极简静态页」，支持预置账号登录与中英 UI。
 
-**Architecture:** API 仍留在仓库根目录（避免大搬家）；新增 `apps/web` Vue SPA。Web 用 HttpOnly 会话 Cookie；脚本继续 `Authorization: Bearer <API_KEY>`。用户/会话一期用可替换的 Memory 仓库（接口对齐，便于二期 Postgres）。生产由 Fastify 托管 `apps/web/dist`。
+**Architecture:** Monorepo：`apps/api`（Fastify + LangGraph）+ `apps/web`（Vue 3 SPA）。Web 用 HttpOnly 会话 Cookie；脚本继续 `Authorization: Bearer <API_KEY>`。用户/会话一期用可替换的 Memory 仓库。生产由 Fastify 托管 `public/web`（Vite `outDir`）。
 
 **Tech Stack:** Fastify 5、bcryptjs、Zod、Vitest；Vue 3 + Vite + TypeScript + Tailwind CSS、vue-router、vue-i18n、Pinia、pnpm workspace
 
