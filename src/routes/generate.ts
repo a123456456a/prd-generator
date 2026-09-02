@@ -2,7 +2,7 @@ import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from "fastify";
 import { CreateTaskBodySchema } from "../schemas/apiSchema.js";
 import { sendSseEvent, writeSseHeaders } from "../services/sse.js";
 import type { TaskService } from "../services/taskService.js";
-import type { Storage } from "../storage/index.js";
+import type { Storage, StoredFile } from "../storage/index.js";
 import { AppError } from "../utils/errors.js";
 
 const DOCUMENT_MIME_TYPES = new Set([
@@ -31,6 +31,15 @@ function isAllowedMimeType(mimeType: string): boolean {
     mimeType.startsWith("audio/") ||
     mimeType.startsWith("text/") ||
     DOCUMENT_MIME_TYPES.has(mimeType)
+  );
+}
+
+async function cleanupSavedFiles(
+  storage: Storage,
+  files: StoredFile[],
+): Promise<void> {
+  await Promise.allSettled(
+    files.map((file) => storage.remove(file.storageKey)),
   );
 }
 
@@ -111,6 +120,7 @@ async function readGenerateInput(
     options: rawOptions,
   });
   if (!parsed.success) {
+    await cleanupSavedFiles(options.storage, files);
     throw new AppError(
       "INVALID_GENERATE_REQUEST",
       parsed.error.issues.map((issue) => issue.message).join("; "),

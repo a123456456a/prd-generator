@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { FastifyInstance } from "fastify";
 import type { AppConfig } from "../../src/config.js";
 import { buildServer } from "../../src/server.js";
@@ -49,6 +49,32 @@ function multipart(fields: Record<string, string>) {
           `--${boundary}\r\nContent-Disposition: form-data; name="${name}"\r\n\r\n${value}\r\n`,
       )
       .join("") + `--${boundary}--\r\n`;
+  return {
+    payload,
+    headers: {
+      authorization: `Bearer ${config.apiKey}`,
+      "content-type": `multipart/form-data; boundary=${boundary}`,
+    },
+  };
+}
+
+function multipartWithFile(
+  fields: Record<string, string>,
+  file: { name: string; filename: string; content: string; mimeType?: string },
+) {
+  const boundary = "route-test-boundary";
+  const fieldParts = Object.entries(fields)
+    .map(
+      ([name, value]) =>
+        `--${boundary}\r\nContent-Disposition: form-data; name="${name}"\r\n\r\n${value}\r\n`,
+    )
+    .join("");
+  const filePart =
+    `--${boundary}\r\n` +
+    `Content-Disposition: form-data; name="${file.name}"; filename="${file.filename}"\r\n` +
+    `Content-Type: ${file.mimeType ?? "text/plain"}\r\n\r\n` +
+    `${file.content}\r\n`;
+  const payload = fieldParts + filePart + `--${boundary}--\r\n`;
   return {
     payload,
     headers: {
@@ -121,6 +147,42 @@ describe("buildServer", () => {
       threadId: expect.any(String),
       status: "queued",
     });
+  });
+
+  it("removes saved uploads when body validation fails after multipart parsing", async () => {
+    const remove = vi.fn(async () => {});
+    const testStorage: Storage = {
+      ...storage,
+      async save(input) {
+        return {
+          storageKey: "saved-upload-key",
+          originalName: input.originalName,
+          mimeType: input.mimeType,
+          size: input.buffer.length,
+          absolutePath: input.originalName,
+        };
+      },
+      remove,
+    };
+    const instance = await buildServer({
+      config,
+      storage: testStorage,
+      taskService: new TaskService({ runner }),
+    });
+    apps.push(instance);
+
+    const response = await instance.inject({
+      method: "POST",
+      url: "/api/generate",
+      ...multipartWithFile(
+        { options: JSON.stringify({ language: "fr-FR" }) },
+        { name: "file", filename: "notes.txt", content: "hello" },
+      ),
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(remove).toHaveBeenCalledOnce();
+    expect(remove).toHaveBeenCalledWith("saved-upload-key");
   });
 
   it("limits generation requests to five per API key each minute", async () => {
