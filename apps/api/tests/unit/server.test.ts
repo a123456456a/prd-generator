@@ -2,7 +2,11 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { FastifyInstance } from "fastify";
+import { MemorySessionStore } from "../../src/auth/memorySessionStore.js";
+import { MemoryUserStore } from "../../src/auth/memoryUserStore.js";
+import { seedAdmin } from "../../src/auth/seedAdmin.js";
 import type { AppConfig } from "../../src/config.js";
+import type { PRD } from "../../src/schemas/prdSchema.js";
 import { buildServer } from "../../src/server.js";
 import { TaskService, type TaskGraphRunner } from "../../src/services/taskService.js";
 import type { Storage, StoredFile } from "../../src/storage/index.js";
@@ -35,6 +39,25 @@ const runner: TaskGraphRunner = {
   async *run() {
     yield { status: "completed", progress: 100 };
   },
+};
+
+const prd: PRD = {
+  title: "Exportable PRD",
+  version: "1.0.0",
+  date: "2026-09-02",
+  language: "en-US",
+  background: "Export test",
+  objectives: [],
+  targetUsers: [],
+  assumptions: [],
+  outOfScope: [],
+  functionalRequirements: [],
+  nonFunctionalRequirements: [],
+  userStories: [],
+  userFlows: [],
+  openQuestions: [],
+  technicalConsiderations: [],
+  prototypeDescription: "None",
 };
 
 const storage: Storage = {
@@ -71,6 +94,12 @@ function multipart(fields: Record<string, string>) {
   };
 }
 
+function multipartWithoutAuth(fields: Record<string, string>) {
+  const request = multipart(fields);
+  const { authorization: _authorization, ...headers } = request.headers;
+  return { ...request, headers };
+}
+
 function multipartWithFile(
   fields: Record<string, string>,
   file: { name: string; filename: string; content: string; mimeType?: string },
@@ -105,10 +134,15 @@ describe("buildServer", () => {
   });
 
   async function app(taskService = new TaskService({ runner })) {
+    const users = new MemoryUserStore();
+    const sessions = new MemorySessionStore();
+    await seedAdmin(users, config);
     const instance = await buildServer({
       config,
       storage,
       taskService,
+      users,
+      sessions,
     });
     apps.push(instance);
     return instance;
@@ -141,6 +175,59 @@ describe("buildServer", () => {
 
     expect(missing.statusCode).toBe(401);
     expect(wrong.statusCode).toBe(401);
+    expect(missing.json()).toEqual({
+      code: "AUTH_REQUIRED",
+      message: "Authentication required",
+    });
+  });
+
+  it("allows a session cookie to generate after login", async () => {
+    const instance = await app();
+    const login = await instance.inject({
+      method: "POST",
+      url: "/api/auth/login",
+      payload: { username: "admin", password: "admin-change-me" },
+    });
+    const sid = login.cookies.find((cookie) => cookie.name === "sid")?.value;
+
+    const response = await instance.inject({
+      method: "POST",
+      url: "/api/generate",
+      ...multipartWithoutAuth({ textDescription: "用会话生成 PRD" }),
+      cookies: { sid: sid! },
+    });
+
+    expect(login.statusCode).toBe(200);
+    expect(sid).toBeTruthy();
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      threadId: expect.any(String),
+      status: "queued",
+    });
+  });
+
+  it("limits login attempts to five per IP each minute", async () => {
+    const instance = await app();
+
+    for (let index = 0; index < 5; index += 1) {
+      const response = await instance.inject({
+        method: "POST",
+        url: "/api/auth/login",
+        payload: { username: "admin", password: "wrong" },
+      });
+      expect(response.statusCode).toBe(401);
+    }
+
+    const limited = await instance.inject({
+      method: "POST",
+      url: "/api/auth/login",
+      payload: { username: "admin", password: "wrong" },
+    });
+    expect(limited.statusCode).toBe(429);
+    expect(limited.json()).toEqual({
+      code: "RATE_LIMITED",
+      message: "Too many requests",
+    });
   });
 
   it("queues a multipart generation request without waiting for the graph", async () => {
@@ -194,6 +281,10 @@ describe("buildServer", () => {
     });
 
     expect(response.statusCode).toBe(400);
+    expect(response.json()).toEqual({
+      code: "INVALID_GENERATE_REQUEST",
+      message: expect.any(String),
+    });
     expect(remove).toHaveBeenCalledOnce();
     expect(remove).toHaveBeenCalledWith("saved-upload-key");
   });
@@ -249,5 +340,31 @@ describe("buildServer", () => {
     expect(missingExport.statusCode).toBe(404);
     expect(missingExport.body).toBe("");
     expect(cancelled.statusCode).toBe(204);
+  });
+
+  it("exports a structured PRD as JSON", async () => {
+    const taskService = new TaskService({
+      runner: {
+        async *run() {
+          yield { status: "completed", progress: 100, prd };
+        },
+      },
+    });
+    const { threadId } = await taskService.createTask({
+      files: [],
+      textDescription: "导出 JSON",
+    });
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    const instance = await app(taskService);
+
+    const response = await instance.inject({
+      method: "GET",
+      url: `/api/thread/${threadId}/export/prd.json`,
+      headers: { authorization: `Bearer ${config.apiKey}` },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.headers["content-type"]).toContain("application/json");
+    expect(response.json()).toEqual(prd);
   });
 });

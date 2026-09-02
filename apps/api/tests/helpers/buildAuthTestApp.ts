@@ -1,5 +1,6 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import cookie from "@fastify/cookie";
 import Fastify, { type FastifyInstance } from "fastify";
 import { MemorySessionStore } from "../../src/auth/memorySessionStore.js";
 import { MemoryUserStore } from "../../src/auth/memoryUserStore.js";
@@ -47,6 +48,7 @@ export async function buildAuthTestApp(
   await seedAdmin(users, config);
 
   const app = Fastify({ logger: false });
+  await app.register(cookie);
   await registerAuthRoutes(app, { config, users, sessions });
   return { app, users, sessions, config };
 }

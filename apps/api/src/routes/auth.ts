@@ -1,8 +1,8 @@
-import cookie from "@fastify/cookie";
 import type { FastifyInstance } from "fastify";
 import { verifyPassword } from "../auth/password.js";
 import type { SessionStore, UserRecord, UserStore } from "../auth/types.js";
 import type { AppConfig } from "../config.js";
+import { createRateLimiter } from "../middleware/rateLimit.js";
 
 export type AuthRoutesDeps = {
   config: AppConfig;
@@ -56,27 +56,38 @@ export async function registerAuthRoutes(
   app: FastifyInstance,
   deps: AuthRoutesDeps,
 ): Promise<void> {
-  await app.register(cookie);
-
-  app.post("/api/auth/login", async (request, reply) => {
-    const body = request.body as LoginBody;
-    const username = body.username?.trim() ?? "";
-    const password = body.password ?? "";
-
-    const user = await deps.users.findByUsername(username);
-    if (!user || user.status !== "active") {
-      return authInvalid(reply);
-    }
-
-    const valid = await verifyPassword(password, user.passwordHash);
-    if (!valid) {
-      return authInvalid(reply);
-    }
-
-    const session = await deps.sessions.create(user.id, deps.config.sessionTtlMs);
-    reply.setCookie("sid", session.id, cookieOptions(deps.config));
-    return reply.send({ user: publicUser(user) });
+  const limitLogin = createRateLimiter({
+    windowMs: 60_000,
+    max: 5,
+    keyFn: (request) => request.ip,
   });
+
+  app.post(
+    "/api/auth/login",
+    { preHandler: limitLogin },
+    async (request, reply) => {
+      const body = request.body as LoginBody;
+      const username = body.username?.trim() ?? "";
+      const password = body.password ?? "";
+
+      const user = await deps.users.findByUsername(username);
+      if (!user || user.status !== "active") {
+        return authInvalid(reply);
+      }
+
+      const valid = await verifyPassword(password, user.passwordHash);
+      if (!valid) {
+        return authInvalid(reply);
+      }
+
+      const session = await deps.sessions.create(
+        user.id,
+        deps.config.sessionTtlMs,
+      );
+      reply.setCookie("sid", session.id, cookieOptions(deps.config));
+      return reply.send({ user: publicUser(user) });
+    },
+  );
 
   app.post("/api/auth/logout", async (request, reply) => {
     const sid = request.cookies.sid;

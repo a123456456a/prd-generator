@@ -119,6 +119,15 @@ export const threadRoutes: FastifyPluginAsync<ThreadRoutesOptions> = async (
   );
 
   app.get<{ Params: ThreadParams }>(
+    "/thread/:threadId/export/prd.json",
+    async (request, reply) => {
+      const task = requireTask(taskService, request.params.threadId);
+      if (!task.prd) return reply.code(404).send();
+      return reply.type("application/json; charset=utf-8").send(task.prd);
+    },
+  );
+
+  app.get<{ Params: ThreadParams }>(
     "/thread/:threadId/export/prototype.html",
     async (request, reply) => {
       const task = requireTask(taskService, request.params.threadId);

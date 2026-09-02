@@ -1,28 +1,9 @@
 import { buildPrdPrompt } from "../../prompts/prdPrompt.js";
-import { PRDSchema, type PRD } from "../../schemas/prdSchema.js";
+import { PRDSchema } from "../../schemas/prdSchema.js";
+import { prdToMarkdown } from "../../utils/prdToMarkdown.js";
 import type { GraphModel, GraphStateType } from "../state.js";
 
 const MAX_ATTEMPTS = 3;
-
-function toMarkdown(prd: PRD): string {
-  return [
-    `# ${prd.title}`,
-    "",
-    `版本：${prd.version}`,
-    "",
-    "## 背景",
-    prd.background,
-    "",
-    "## 目标",
-    ...prd.objectives.map((objective) => `- ${objective}`),
-    "",
-    "## 功能需求",
-    ...prd.functionalRequirements.map(
-      (requirement) =>
-        `- **${requirement.id} ${requirement.name}**：${requirement.description}`,
-    ),
-  ].join("\n");
-}
 
 export function createGeneratePrdNode(
   modelFactory: (model: string) => GraphModel,
@@ -57,7 +38,7 @@ export function createGeneratePrdNode(
 
         return {
           prd,
-          prdMarkdown: toMarkdown(prd),
+          prdMarkdown: prdToMarkdown(prd),
           status,
           progress: status === "completed" || status === "awaiting_review" ? 100 : 75,
           error: undefined,
