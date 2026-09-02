@@ -1,0 +1,11 @@
+node_modules
+dist
+.env
+.env.local
+uploads/*
+!uploads/.gitkeep
+package-lock.json
+npm-shrinkwrap.json
+yarn.lock
+v20.20.2/
+.superpowers/

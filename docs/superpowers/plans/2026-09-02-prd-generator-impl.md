@@ -17,7 +17,8 @@
 - 单文件 ≤ 50MB，合计 ≤ 200MB，文件数 ≤ 20；MIME 白名单
 - Graph State **禁止**存文件二进制，只存 `storageKey` / 路径
 - 密钥仅环境变量；日志脱敏
-- 包管理：npm；`"type": "module"`；提交 lockfile
+- 包管理：pnpm（`packageManager: pnpm@11.25.0`）；`"type": "module"`；提交 `pnpm-lock.yaml` + `pnpm-workspace.yaml`（`allowBuilds.esbuild`）；不使用 npm / `package-lock.json`
+- 若本机 NVM 拦截 `pnpm`（NVM4306），可用：`node $(dirname $(which node))/../installs/<ver>/node_modules/corepack/dist/pnpm.js`，或先 `nvm reshim` 信任 pnpm 入口
 - 本期不做：实时 ASR、墨刀深度集成、多租户计费、生产 OCR（无文本 PDF 返回明确错误即可）
 - 测试框架：Vitest；涉及 LLM 的单测用 mock model
 
@@ -89,7 +90,7 @@ prd-generator/
 - Create: `package.json`, `tsconfig.json`, `vitest.config.ts`, `.env.example`, `.gitignore`, `src/config.ts`, `src/utils/logger.ts`, `src/utils/errors.ts`, `src/index.ts`, `uploads/.gitkeep`
 
 **Interfaces:**
-- Produces: `loadConfig(): AppConfig`；`logger`；`AppError`；npm scripts `dev` / `test` / `build`
+- Produces: `loadConfig(): AppConfig`；`logger`；`AppError`；pnpm scripts `dev` / `test` / `build`
 
 - [ ] **Step 1: 初始化 package.json 与 tsconfig**
 
@@ -132,9 +133,9 @@ prd-generator/
 Run:
 
 ```bash
-npm install fastify @fastify/multipart @fastify/static @fastify/cors dotenv zod pino pino-pretty uuid
-npm install langchain @langchain/core @langchain/openai @langchain/langgraph @langchain/langgraph-checkpoint
-npm install -D typescript tsx vitest @types/node @types/uuid
+pnpm add fastify @fastify/multipart @fastify/static @fastify/cors dotenv zod pino pino-pretty uuid
+pnpm add langchain @langchain/core @langchain/openai @langchain/langgraph @langchain/langgraph-checkpoint
+pnpm add -D typescript tsx vitest @types/node @types/uuid
 ```
 
 若 `markitdown-node` 安装失败，先跳过，Task 4 用降级库 `mammoth` `pdf-parse` 等顶上，并在 `documentParser` 注明。
@@ -208,7 +209,7 @@ Expected: 无测试文件时 exit 0 或 “No test files found”（随后 Task 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add package.json package-lock.json tsconfig.json vitest.config.ts .env.example .gitignore src uploads/.gitkeep
+git add package.json pnpm-lock.yaml tsconfig.json vitest.config.ts .env.example .gitignore src uploads/.gitkeep
 git commit -m "chore: scaffold TypeScript project and config"
 ```
 
@@ -518,7 +519,7 @@ git commit -m "feat: add task service and SSE helpers"
 - [ ] **Step 5: 手工冒烟**
 
 ```bash
-npm run dev
+pnpm run dev
 curl -s http://localhost:3000/api/health
 curl -s -H "Authorization: Bearer dev-api-key" -F "textDescription=做一个待办App" http://localhost:3000/api/generate
 ```
