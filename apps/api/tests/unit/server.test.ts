@@ -1,4 +1,6 @@
 import path from "node:path";
+import { mkdtemp, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { FastifyInstance } from "fastify";
@@ -369,5 +371,43 @@ describe("buildServer", () => {
     expect(response.statusCode).toBe(200);
     expect(response.headers["content-type"]).toContain("application/json");
     expect(response.json()).toEqual(prd);
+  });
+
+  it("falls back to index.html for unknown client routes when web dist exists", async () => {
+    const webDistDir = await mkdtemp(path.join(tmpdir(), "prd-web-dist-"));
+    await writeFile(
+      path.join(webDistDir, "index.html"),
+      "<!doctype html><html><body>SPA</body></html>",
+    );
+    const instance = await buildServer({
+      config: { ...config, webDistDir, publicDir: path.join(webDistDir, "missing-public") },
+      storage,
+      taskService: new TaskService({ runner }),
+    });
+    apps.push(instance);
+
+    const login = await instance.inject({ method: "GET", url: "/login" });
+    const head = await instance.inject({ method: "HEAD", url: "/workbench" });
+
+    expect(login.statusCode).toBe(200);
+    expect(login.headers["content-type"]).toContain("text/html");
+    expect(login.body).toContain("SPA");
+    expect(head.statusCode).toBe(200);
+  });
+
+  it("returns JSON 404 for unknown API routes", async () => {
+    const instance = await app();
+
+    const response = await instance.inject({
+      method: "GET",
+      url: "/api/does-not-exist",
+      headers: { authorization: `Bearer ${config.apiKey}` },
+    });
+
+    expect(response.statusCode).toBe(404);
+    expect(response.json()).toEqual({
+      code: "NOT_FOUND",
+      message: "Not found",
+    });
   });
 });
