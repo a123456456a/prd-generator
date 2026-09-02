@@ -2,9 +2,9 @@
 
 | 项 | 内容 |
 |---|---|
-| 文档版本 | v1.0 |
+| 文档版本 | v1.1 |
 | 日期 | 2026-09-02 |
-| 状态 | 已确认（会话内 §1–§4 通过） |
+| 状态 | 已确认（会话内 §1–§4 通过；§2.1 已含 monorepo + 移动端预留） |
 | 关联 | `2026-09-02-prd-generator-requirements.md`（原「极简静态页」升级为本设计） |
 
 ---
@@ -35,6 +35,7 @@
 - OAuth / SSO
 - 多人实时协同编辑
 - 第三种界面语言
+- **独立移动端 App**（二期；一期 Web 需响应式可适配手机浏览器）
 
 ---
 
@@ -46,7 +47,8 @@
 prd-generator/
 ├── apps/
 │   ├── api/                 # Fastify + LangGraph（@prd/api）
-│   └── web/                 # Vue 3 + Vite + Tailwind（@prd/web）
+│   ├── web/                 # Vue 3 + Vite + Tailwind（@prd/web）
+│   └── mobile/              # 二期预留（原生/壳工程，见 §9）
 ├── public/                  # 静态资源；web 构建产物在 public/web/
 ├── uploads/                 # 上传文件（api 解析到仓库根）
 ├── docs/
@@ -55,7 +57,9 @@ prd-generator/
 └── .env.example
 ```
 
-工作区包：`apps/*`（`@prd/api`、`@prd/web`）。根 `package.json` 仅负责编排，不含业务依赖。
+工作区包：`apps/*`（一期：`@prd/api`、`@prd/web`；二期可增 `@prd/mobile`）。根 `package.json` 仅负责编排，不含业务依赖。
+
+**一期 Web 约束**：布局与交互必须 **mobile-first / 响应式**（Tailwind breakpoints），保证手机浏览器可完成登录、上传、看进度、审阅与导出；不要求上架 App Store / 应用商店。
 
 ### 2.2 Web 技术栈
 
@@ -202,7 +206,35 @@ Login → Cookie
 
 ---
 
-## 9. 测试要点
+## 9. 移动端路线（后续）
+
+### 9.1 分期
+
+| 阶段 | 交付 | 说明 |
+|---|---|---|
+| 一期（当前） | 响应式 Web | `@prd/web` 用 Tailwind 适配手机浏览器；API 保持 REST/SSE，不绑死 Web 专属协议 |
+| 二期 | 独立移动端 | 新增 `apps/mobile`（`@prd/mobile`），复用同一 `@prd/api` |
+
+### 9.2 二期候选方案（待拍板）
+
+| 方案 | 优点 | 代价 |
+|---|---|---|
+| A. Capacitor 壳包装现有 Vue | 复用 web 代码最快 | 偏 WebView；复杂原生能力一般 |
+| B. uni-app / Taro 等跨端 | 国内发布与双端习惯好 | 与现有 Vue3+Vite 栈部分分叉 |
+| C. 原生或 RN/Flutter 独立 App | 体验上限高 | 成本最高，与 web 双份 UI |
+
+**推荐默认（未确认前按此预留）：A（Capacitor）** — monorepo 已是 Vue；二期把 `apps/web` 打进壳，必要时再抽 `packages/shared`（类型、API client）。
+
+### 9.3 一期就要为移动端守住的契约
+
+- API：**无状态浏览器也能调**（已有 Bearer）；Cookie 会话保留给 Web
+- 上传/SSE/审阅/导出契约稳定，移动端不另起一套业务 API
+- Web UI：**mobile-first**，大文件上传在弱网下有明确失败提示
+- 仓库预留 `apps/mobile/` 目录位（可不建空包，文档标明即可）
+
+---
+
+## 10. 测试要点
 
 - 未登录访问工作台 → 重定向登录  
 - 种子用户登录成功 / 错误密码失败  
@@ -210,11 +242,12 @@ Login → Cookie
 - 中/英 UI 切换无缺失 key（抽检）  
 - SSE 主路径与 review resume  
 - 原型 iframe 不污染父文档  
-- 密码与 Authorization 不出现在日志明文
+- 密码与 Authorization 不出现在日志明文  
+- **窄屏（≤390px）可完成主路径**（登录 → 上传 → 看进度；导出可点）
 
 ---
 
-## 10. 对原计划的影响
+## 11. 对原计划的影响
 
 | 原项 | 变更 |
 |---|---|
@@ -222,14 +255,15 @@ Login → Cookie
 | 仅 API Key 鉴权 | Web 会话 + API Key 双通路 |
 | 无登录页 | 新增 `/login` 与用户/会话存储 |
 | 实现 plan | 需另写/修订 frontend + auth 实现计划后再编码 |
+| 仅桌面 Web | 一期响应式；二期 `apps/mobile` |
 
 ---
 
-## 11. 已确认决策摘要
+## 12. 已确认决策摘要
 
-1. 方案三：Vue 3 + Vite SPA + 完整中英 i18n  
+1. 方案三：Vue 3 + Vite SPA + 完整中英 i18n + Tailwind  
 2. 登录：账号密码；仅预置用户；后续可能开放注册（预留）  
 3. Web 用会话 Cookie；`API_KEY` 留给非浏览器客户端；接受该拆分  
 4. UI 语言与 `options.language` 分离  
-5. 工程为 api + web；生产由 Fastify 托管前端构建产物  
-|
+5. 工程为 `apps/api` + `apps/web`；生产由 Fastify 托管前端构建产物  
+6. **后续要有移动端**：一期响应式 Web；二期独立 App（默认倾向 Capacitor，待最终确认）
