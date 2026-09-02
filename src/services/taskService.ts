@@ -10,6 +10,7 @@ import type {
   ResumeTaskBody,
 } from "../schemas/apiSchema.js";
 import type { PRD } from "../schemas/prdSchema.js";
+import { AppError } from "../utils/errors.js";
 import type { SseEvent } from "./sse.js";
 
 export type TaskStatus = GraphStatus | "queued" | "running" | "cancelled";
@@ -98,6 +99,10 @@ function mergePrd(prd: PRD | undefined, patch: Record<string, unknown>): PRD {
   return { ...(prd ?? {}), ...patch } as PRD;
 }
 
+function isCancelled(task: TaskSnapshot): boolean {
+  return task.status === "cancelled";
+}
+
 export class LangGraphRunner implements TaskGraphRunner {
   private readonly graph: CompiledTaskGraph;
 
@@ -155,6 +160,8 @@ export class LangGraphRunner implements TaskGraphRunner {
             .join("\n\n"),
           status: "generating_prd",
           progress: 50,
+          prd: null,
+          prdMarkdown: "",
           prototypeHtml: "",
           error: "",
         },
@@ -189,6 +196,7 @@ export class LangGraphRunner implements TaskGraphRunner {
         values: {
           status: "generating_prd",
           progress: 50,
+          prd: null,
           prdMarkdown: "",
           prototypeHtml: "",
           error: "",
@@ -214,6 +222,7 @@ export class LangGraphRunner implements TaskGraphRunner {
 export class TaskService {
   private readonly tasks = new Map<string, TaskSnapshot>();
   private readonly subscribers = new Map<string, Set<Subscriber>>();
+  private readonly activeRuns = new Set<string>();
   private readonly runner: TaskGraphRunner;
 
   constructor(options: { runner?: TaskGraphRunner } = {}) {
@@ -256,6 +265,8 @@ export class TaskService {
 
   async resumeTask(threadId: string, body: ResumeTaskBody): Promise<void> {
     const snapshot = this.requireTask(threadId);
+    this.assertNotRunning(threadId);
+    this.assertResumable(snapshot, body);
     const checkpointSnapshot = { ...snapshot };
     if (snapshot.status === "awaiting_clarification" && body.action === "approve") {
       snapshot.extractedText = [snapshot.extractedText, body.clarificationText]
@@ -290,6 +301,8 @@ export class TaskService {
     target: "prd" | "prototype",
   ): Promise<void> {
     const snapshot = this.requireTask(threadId);
+    this.assertNotRunning(threadId);
+    this.assertRegenerable(snapshot, target);
     this.prepareForRun(snapshot, target === "prd" ? 50 : 75);
     if (target === "prd") {
       snapshot.prd = undefined;
@@ -348,6 +361,15 @@ export class TaskService {
 
   private async execute(request: GraphRunRequest): Promise<void> {
     const task = this.requireTask(request.threadId);
+    if (isCancelled(task)) return;
+    if (this.activeRuns.has(request.threadId)) {
+      throw new AppError(
+        "TASK_ALREADY_RUNNING",
+        `任务正在运行：${request.threadId}`,
+        409,
+      );
+    }
+    this.activeRuns.add(request.threadId);
     if (task.status === "queued") {
       task.status = "running";
       task.updatedAt = new Date().toISOString();
@@ -356,14 +378,14 @@ export class TaskService {
 
     try {
       for await (const update of this.runner.run(request)) {
-        if (task.status === "cancelled") return;
+        if (isCancelled(task)) return;
         this.applyUpdate(task, update);
       }
-      if (task.status !== "cancelled") {
+      if (!isCancelled(task)) {
         this.emit(task.threadId, "done", this.resultPayload(task));
       }
     } catch (error) {
-      if (task.status === "cancelled") return;
+      if (isCancelled(task)) return;
       task.status = "failed";
       task.progress = 100;
       task.error = error instanceof Error ? error.message : String(error);
@@ -371,6 +393,8 @@ export class TaskService {
       this.emit(task.threadId, "status", { status: "failed" });
       this.emit(task.threadId, "error", { error: task.error });
       this.emit(task.threadId, "done", this.resultPayload(task));
+    } finally {
+      this.activeRuns.delete(request.threadId);
     }
   }
 
@@ -378,6 +402,7 @@ export class TaskService {
     const previousStatus = task.status;
     const previousProgress = task.progress;
     Object.assign(task, update, { updatedAt: new Date().toISOString() });
+    if (update.prd === null) task.prd = undefined;
     if (update.error === "") task.error = undefined;
 
     if (task.status !== previousStatus) {
@@ -421,5 +446,48 @@ export class TaskService {
     const task = this.tasks.get(threadId);
     if (!task) throw new Error(`任务不存在：${threadId}`);
     return task;
+  }
+
+  private assertNotRunning(threadId: string): void {
+    if (this.activeRuns.has(threadId)) {
+      throw new AppError(
+        "TASK_ALREADY_RUNNING",
+        `任务正在运行：${threadId}`,
+        409,
+      );
+    }
+  }
+
+  private assertResumable(task: TaskSnapshot, body: ResumeTaskBody): void {
+    const validClarification =
+      task.status === "awaiting_clarification" &&
+      body.action === "approve" &&
+      Boolean(body.clarificationText);
+    const validReview =
+      task.status === "awaiting_review" &&
+      ["approve", "edit", "reject"].includes(body.action);
+    if (!validClarification && !validReview) {
+      throw new AppError(
+        "TASK_NOT_RESUMABLE",
+        `任务状态 ${task.status} 不可恢复`,
+        409,
+      );
+    }
+  }
+
+  private assertRegenerable(
+    task: TaskSnapshot,
+    target: "prd" | "prototype",
+  ): void {
+    if (!["completed", "awaiting_review", "failed"].includes(task.status)) {
+      throw new AppError(
+        "TASK_NOT_REGENERABLE",
+        `任务状态 ${task.status} 不可重新生成`,
+        409,
+      );
+    }
+    if (target === "prototype" && !task.prd) {
+      throw new AppError("PRD_REQUIRED", "缺少 PRD，无法重新生成原型", 409);
+    }
   }
 }

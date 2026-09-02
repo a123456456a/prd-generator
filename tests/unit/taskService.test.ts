@@ -5,6 +5,7 @@ import {
   type GraphRunRequest,
   type TaskGraphRunner,
 } from "../../src/services/taskService.js";
+import { AppError } from "../../src/utils/errors.js";
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -56,6 +57,46 @@ describe("TaskService", () => {
       expect.any(Object),
       expect.objectContaining({ status: "completed" }),
       "generate_prd",
+    );
+  });
+
+  it("clears the checkpoint PRD when review is rejected", async () => {
+    const graph = {
+      updateState: vi.fn().mockResolvedValue(undefined),
+      stream: vi.fn().mockResolvedValue(
+        (async function* () {
+          // The checkpoint update is sufficient for this assertion.
+        })(),
+      ),
+    };
+    const runner = new LangGraphRunner(graph as never);
+    const now = new Date().toISOString();
+
+    for await (const _update of runner.run({
+      kind: "resume",
+      threadId: "reject-thread",
+      snapshot: {
+        threadId: "reject-thread",
+        status: "awaiting_review",
+        progress: 100,
+        prd: { title: "旧 PRD" } as never,
+        prdMarkdown: "# 旧 PRD",
+        prototypeHtml: "stale",
+        gaps: [],
+        config: {},
+        extractedText: "需求",
+        createdAt: now,
+        updatedAt: now,
+      },
+      body: { action: "reject", feedback: "请重写" },
+    })) {
+      // Drain the runner so updateState executes.
+    }
+
+    expect(graph.updateState).toHaveBeenCalledWith(
+      expect.any(Object),
+      expect.objectContaining({ prd: null, prdMarkdown: "" }),
+      "extract_requirements",
     );
   });
 
@@ -160,6 +201,52 @@ describe("TaskService", () => {
     );
   });
 
+  it("rejects resume for a completed task without changing its snapshot", async () => {
+    const run = vi.fn<TaskGraphRunner["run"]>(() =>
+      (async function* () {
+        yield {
+          status: "completed",
+          progress: 100,
+          prdMarkdown: "# 完成",
+        };
+      })(),
+    );
+    const service = new TaskService({ runner: { run } });
+    const { threadId } = await service.createTask({ files: [] });
+    await vi.waitFor(() => {
+      expect(service.getTask(threadId)?.status).toBe("completed");
+    });
+    const before = service.getTask(threadId);
+
+    await expect(
+      service.resumeTask(threadId, { action: "approve" }),
+    ).rejects.toBeInstanceOf(AppError);
+
+    expect(service.getTask(threadId)).toEqual(before);
+    expect(run).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects an overlapping run for the same task", async () => {
+    const release = deferred<void>();
+    const run = vi.fn<TaskGraphRunner["run"]>(() =>
+      (async function* () {
+        await release.promise;
+        yield { status: "completed", progress: 100 };
+      })(),
+    );
+    const service = new TaskService({ runner: { run } });
+    const { threadId } = await service.createTask({ files: [] });
+    await vi.waitFor(() => {
+      expect(service.getTask(threadId)?.status).toBe("running");
+    });
+
+    await expect(service.regenerate(threadId, "prd")).rejects.toMatchObject({
+      code: "TASK_ALREADY_RUNNING",
+    });
+    expect(run).toHaveBeenCalledTimes(1);
+    release.resolve();
+  });
+
   it("marks cancellation and rejects later updates", async () => {
     const release = deferred<void>();
     const runner: TaskGraphRunner = {
@@ -184,12 +271,32 @@ describe("TaskService", () => {
     );
   });
 
+  it("does not start queued graph work after cancellation", async () => {
+    const run = vi.fn<TaskGraphRunner["run"]>(() =>
+      (async function* () {
+        yield { status: "completed", progress: 100 };
+      })(),
+    );
+    const service = new TaskService({ runner: { run } });
+    const { threadId } = await service.createTask({ files: [] });
+
+    await service.cancelTask(threadId);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(run).not.toHaveBeenCalled();
+    expect(service.getTask(threadId)?.status).toBe("cancelled");
+  });
+
   it("starts partial regeneration without reparsing input", async () => {
     const requests: GraphRunRequest[] = [];
     const runner: TaskGraphRunner = {
       async *run(request) {
         requests.push(request);
-        yield { status: "completed", progress: 100 };
+        yield {
+          status: "completed",
+          progress: 100,
+          prd: { title: "PRD" } as never,
+        };
       },
     };
     const service = new TaskService({ runner });

@@ -61,8 +61,8 @@ export const GraphState = Annotation.Root({
     reducer: overwrite,
     default: () => undefined,
   }),
-  prd: Annotation<PRD | undefined>({
-    reducer: overwrite,
+  prd: Annotation<PRD | null | undefined>({
+    reducer: (_current, update) => update,
     default: () => undefined,
   }),
   prdMarkdown: Annotation<string>({
