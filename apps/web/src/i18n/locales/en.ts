@@ -95,6 +95,7 @@ export default {
     option: "中文",
   },
   errors: {
+    details: "Technical details",
     AUTH_INVALID: "Incorrect username or password",
     AUTH_REQUIRED: "Please sign in first",
     RATE_LIMITED: "Too many requests. Please try again later",

@@ -95,6 +95,7 @@ export default {
     option: "English",
   },
   errors: {
+    details: "技术详情",
     AUTH_INVALID: "用户名或密码错误",
     AUTH_REQUIRED: "请先登录",
     RATE_LIMITED: "请求过于频繁，请稍后再试",

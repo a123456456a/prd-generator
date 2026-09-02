@@ -42,14 +42,13 @@ const statusLabel = computed(() => {
   const key = `workbench.status.${phase.value}`;
   return te(key) ? t(key) : phase.value;
 });
-const displayError = computed(() => {
+const displayErrorMessage = computed(() => {
   if (!uiError.value) return "";
   const key = `errors.${uiError.value.code}`;
-  const translated = te(key) ? t(key) : t("errors.UNKNOWN");
-  return uiError.value.message && translated !== uiError.value.message
-    ? `${translated}：${uiError.value.message}`
-    : translated;
+  return te(key) ? t(key) : t("errors.UNKNOWN");
 });
+
+const displayErrorDetails = computed(() => uiError.value?.message?.trim() ?? "");
 
 function selectFiles(event: Event) {
   const input = event.target as HTMLInputElement;
@@ -138,11 +137,19 @@ onMounted(() => {
       </header>
 
       <div
-        v-if="displayError"
+        v-if="uiError"
         role="alert"
         class="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
       >
-        {{ displayError }}
+        {{ displayErrorMessage }}
+        <details v-if="displayErrorDetails" class="mt-2">
+          <summary class="cursor-pointer font-medium text-red-800">
+            {{ t("errors.details") }}
+          </summary>
+          <p class="mt-1 whitespace-pre-wrap break-words text-red-600">
+            {{ displayErrorDetails }}
+          </p>
+        </details>
       </div>
 
       <div class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(320px,0.8fr)]">

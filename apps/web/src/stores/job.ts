@@ -109,10 +109,7 @@ export const useJobStore = defineStore("job", () => {
       const payload = data as { code?: unknown; error?: unknown };
       uiError.value = {
         code: typeof payload?.code === "string" ? payload.code : "GENERATION_FAILED",
-        message:
-          typeof payload?.error === "string"
-            ? payload.error
-            : "Generation failed",
+        message: typeof payload?.error === "string" ? payload.error : "",
       };
     }
   }
