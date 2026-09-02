@@ -405,7 +405,17 @@ data: {"threadId":"...","status":"completed"}
 | 测试 | Vitest |
 | 容器 | Docker + docker-compose（API + Postgres） |
 
-### 5.2 逻辑分层
+### 5.2 逻辑分层（Monorepo）
+
+```
+prd-generator/
+├── apps/api/     # @prd/api — Fastify + LangGraph + parsers
+├── apps/web/     # @prd/web — Vue 3 + Vite + Tailwind
+├── public/       # 静态与 web 构建产物
+└── uploads/
+```
+
+API 内部分层：
 
 ```
 API 层（routes） → 应用服务（task service）→ Graph 编排 → Nodes
