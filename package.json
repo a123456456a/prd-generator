@@ -5,11 +5,15 @@
   "type": "module",
   "packageManager": "pnpm@11.25.0",
   "scripts": {
-    "dev": "tsx watch src/index.ts",
-    "build": "tsc -p tsconfig.json",
+    "dev": "pnpm run --parallel /^dev:/",
+    "dev:api": "tsx watch src/index.ts",
+    "dev:web": "pnpm --filter @prd/web dev",
+    "build": "pnpm --filter @prd/web build && tsc -p tsconfig.json",
+    "build:api": "tsc -p tsconfig.json",
     "start": "node dist/index.js",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "test:web": "pnpm --filter @prd/web test"
   },
   "dependencies": {
     "@fastify/cors": "^11.3.0",
