@@ -36,6 +36,34 @@ export class TokenBucketRateLimiter {
   }
 }
 
+export type RateLimiterOptions = {
+  windowMs: number;
+  max: number;
+  keyFn: (request: FastifyRequest) => string;
+};
+
+/**
+ * Generic rate limiter factory.
+ * Login routes should key by client IP; generate routes by `user:<id>` or `key:api`.
+ */
+export function createRateLimiter(options: RateLimiterOptions) {
+  const bucket = new TokenBucketRateLimiter(options.max, options.windowMs);
+
+  return async function rateLimit(
+    request: FastifyRequest,
+    reply: FastifyReply,
+  ): Promise<void> {
+    const result = bucket.consume(options.keyFn(request));
+    if (!result.allowed) {
+      reply.header("Retry-After", result.retryAfter);
+      return reply.code(429).send({
+        code: "RATE_LIMITED",
+        message: "Too many requests",
+      });
+    }
+  };
+}
+
 export function createRateLimitHook() {
   const general = new TokenBucketRateLimiter(20);
   const generate = new TokenBucketRateLimiter(5);

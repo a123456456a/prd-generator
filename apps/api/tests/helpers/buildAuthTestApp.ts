@@ -5,6 +5,7 @@ import { MemorySessionStore } from "../../src/auth/memorySessionStore.js";
 import { MemoryUserStore } from "../../src/auth/memoryUserStore.js";
 import { seedAdmin } from "../../src/auth/seedAdmin.js";
 import type { AppConfig } from "../../src/config.js";
+import { registerPrincipal, requireAuth } from "../../src/middleware/auth.js";
 import { registerAuthRoutes } from "../../src/routes/auth.js";
 
 const repoPublic = path.resolve(
@@ -48,4 +49,29 @@ export async function buildAuthTestApp(
   const app = Fastify({ logger: false });
   await registerAuthRoutes(app, { config, users, sessions });
   return { app, users, sessions, config };
+}
+
+export async function buildDualAuthTestApp(
+  config: AppConfig = defaultAuthTestConfig,
+  prepare?: (deps: AuthTestApp) => Promise<void>,
+): Promise<AuthTestApp> {
+  const testApp = await buildAuthTestApp(config);
+  if (prepare) {
+    await prepare(testApp);
+  }
+
+  registerPrincipal(testApp.app);
+  testApp.app.addHook(
+    "onRequest",
+    requireAuth({
+      config: testApp.config,
+      users: testApp.users,
+      sessions: testApp.sessions,
+    }),
+  );
+  testApp.app.get("/api/protected", async (request) => ({
+    principal: request.principal,
+  }));
+
+  return testApp;
 }
