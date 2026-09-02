@@ -338,7 +338,10 @@ describe("buildServer", () => {
     expect(snapshot.statusCode).toBe(200);
     expect(snapshot.json()).toEqual(expect.objectContaining({ threadId }));
     expect(missingExport.statusCode).toBe(404);
-    expect(missingExport.body).toBe("");
+    expect(missingExport.json()).toEqual({
+      code: "NOT_FOUND",
+      message: "PRD Markdown export is not available",
+    });
     expect(cancelled.statusCode).toBe(204);
   });
 

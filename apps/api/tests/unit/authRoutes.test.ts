@@ -137,6 +137,9 @@ describe("auth routes", () => {
       payload: { username: "new", password: "pass" },
     });
     expect(res.statusCode).toBe(501);
-    expect(res.json()).toEqual({ code: "NOT_IMPLEMENTED" });
+    expect(res.json()).toEqual({
+      code: "NOT_IMPLEMENTED",
+      message: "Registration is not available in this release",
+    });
   });
 });

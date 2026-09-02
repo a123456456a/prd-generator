@@ -113,7 +113,9 @@ export const threadRoutes: FastifyPluginAsync<ThreadRoutesOptions> = async (
     "/thread/:threadId/export/prd.md",
     async (request, reply) => {
       const task = requireTask(taskService, request.params.threadId);
-      if (!task.prdMarkdown) return reply.code(404).send();
+      if (!task.prdMarkdown) {
+        throw new AppError("NOT_FOUND", "PRD Markdown export is not available", 404);
+      }
       return reply.type("text/markdown; charset=utf-8").send(task.prdMarkdown);
     },
   );
@@ -122,7 +124,9 @@ export const threadRoutes: FastifyPluginAsync<ThreadRoutesOptions> = async (
     "/thread/:threadId/export/prd.json",
     async (request, reply) => {
       const task = requireTask(taskService, request.params.threadId);
-      if (!task.prd) return reply.code(404).send();
+      if (!task.prd) {
+        throw new AppError("NOT_FOUND", "PRD JSON export is not available", 404);
+      }
       return reply.type("application/json; charset=utf-8").send(task.prd);
     },
   );
@@ -131,7 +135,9 @@ export const threadRoutes: FastifyPluginAsync<ThreadRoutesOptions> = async (
     "/thread/:threadId/export/prototype.html",
     async (request, reply) => {
       const task = requireTask(taskService, request.params.threadId);
-      if (!task.prototypeHtml) return reply.code(404).send();
+      if (!task.prototypeHtml) {
+        throw new AppError("NOT_FOUND", "Prototype HTML export is not available", 404);
+      }
       return reply.type("text/html; charset=utf-8").send(task.prototypeHtml);
     },
   );

@@ -107,6 +107,9 @@ export async function registerAuthRoutes(
   });
 
   app.post("/api/auth/register", async (_request, reply) => {
-    return reply.code(501).send({ code: "NOT_IMPLEMENTED" });
+    return reply.code(501).send({
+      code: "NOT_IMPLEMENTED",
+      message: "Registration is not available in this release",
+    });
   });
 }
