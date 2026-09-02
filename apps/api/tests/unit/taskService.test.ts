@@ -7,6 +7,8 @@ import {
 } from "../../src/services/taskService.js";
 import { AppError } from "../../src/utils/errors.js";
 
+const apiKeyPrincipal = { kind: "apiKey" } as const;
+
 function deferred<T>() {
   let resolve!: (value: T) => void;
   const promise = new Promise<T>((done) => {
@@ -34,6 +36,7 @@ describe("TaskService", () => {
       threadId: "resume-thread",
       snapshot: {
         threadId: "resume-thread",
+        owner: apiKeyPrincipal,
         status: "awaiting_review",
         progress: 100,
         prd: { title: "PRD" } as never,
@@ -77,6 +80,7 @@ describe("TaskService", () => {
       threadId: "reject-thread",
       snapshot: {
         threadId: "reject-thread",
+        owner: apiKeyPrincipal,
         status: "awaiting_review",
         progress: 100,
         prd: { title: "旧 PRD" } as never,
@@ -110,10 +114,13 @@ describe("TaskService", () => {
     };
     const service = new TaskService({ runner });
 
-    const result = await service.createTask({
-      files: [],
-      textDescription: "生成 PRD",
-    });
+    const result = await service.createTask(
+      {
+        files: [],
+        textDescription: "生成 PRD",
+      },
+      apiKeyPrincipal,
+    );
 
     expect(result.threadId).toEqual(expect.any(String));
     expect(service.getTask(result.threadId)?.status).toBe("queued");
@@ -135,7 +142,10 @@ describe("TaskService", () => {
       },
     };
     const service = new TaskService({ runner });
-    const { threadId } = await service.createTask({ files: [] });
+    const { threadId } = await service.createTask(
+      { files: [] },
+      apiKeyPrincipal,
+    );
     const send = vi.fn();
     service.subscribe(threadId, send);
 
@@ -175,7 +185,10 @@ describe("TaskService", () => {
       },
     };
     const service = new TaskService({ runner });
-    const { threadId } = await service.createTask({ files: [] });
+    const { threadId } = await service.createTask(
+      { files: [] },
+      apiKeyPrincipal,
+    );
     await vi.waitFor(() => {
       expect(service.getTask(threadId)?.status).toBe("awaiting_review");
     });
@@ -212,7 +225,10 @@ describe("TaskService", () => {
       })(),
     );
     const service = new TaskService({ runner: { run } });
-    const { threadId } = await service.createTask({ files: [] });
+    const { threadId } = await service.createTask(
+      { files: [] },
+      apiKeyPrincipal,
+    );
     await vi.waitFor(() => {
       expect(service.getTask(threadId)?.status).toBe("completed");
     });
@@ -235,7 +251,10 @@ describe("TaskService", () => {
       })(),
     );
     const service = new TaskService({ runner: { run } });
-    const { threadId } = await service.createTask({ files: [] });
+    const { threadId } = await service.createTask(
+      { files: [] },
+      apiKeyPrincipal,
+    );
     await vi.waitFor(() => {
       expect(service.getTask(threadId)?.status).toBe("running");
     });
@@ -256,7 +275,10 @@ describe("TaskService", () => {
       },
     };
     const service = new TaskService({ runner });
-    const { threadId } = await service.createTask({ files: [] });
+    const { threadId } = await service.createTask(
+      { files: [] },
+      apiKeyPrincipal,
+    );
     const send = vi.fn();
     service.subscribe(threadId, send);
 
@@ -278,7 +300,10 @@ describe("TaskService", () => {
       })(),
     );
     const service = new TaskService({ runner: { run } });
-    const { threadId } = await service.createTask({ files: [] });
+    const { threadId } = await service.createTask(
+      { files: [] },
+      apiKeyPrincipal,
+    );
 
     await service.cancelTask(threadId);
     await new Promise((resolve) => setTimeout(resolve, 0));
@@ -300,7 +325,10 @@ describe("TaskService", () => {
       },
     };
     const service = new TaskService({ runner });
-    const { threadId } = await service.createTask({ files: [] });
+    const { threadId } = await service.createTask(
+      { files: [] },
+      apiKeyPrincipal,
+    );
     await vi.waitFor(() => {
       expect(service.getTask(threadId)?.status).toBe("completed");
     });

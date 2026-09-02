@@ -4,7 +4,7 @@ import dotenv from "dotenv";
 import { MemorySessionStore } from "./auth/memorySessionStore.js";
 import { MemoryUserStore } from "./auth/memoryUserStore.js";
 import { seedAdmin } from "./auth/seedAdmin.js";
-import { loadConfig } from "./config.js";
+import { assertProductionConfig, loadConfig } from "./config.js";
 import { REPO_ROOT } from "./paths.js";
 import { buildServer } from "./server.js";
 
@@ -13,6 +13,9 @@ dotenv.config({ path: path.join(REPO_ROOT, ".env") });
 dotenv.config({ path: path.join(apiRoot, ".env") });
 
 const config = loadConfig();
+if (process.env.NODE_ENV === "production") {
+  assertProductionConfig(config);
+}
 const users = new MemoryUserStore();
 const sessions = new MemorySessionStore();
 await seedAdmin(users, config);

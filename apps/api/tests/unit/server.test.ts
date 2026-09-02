@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { FastifyInstance } from "fastify";
 import { MemorySessionStore } from "../../src/auth/memorySessionStore.js";
 import { MemoryUserStore } from "../../src/auth/memoryUserStore.js";
+import { hashPassword } from "../../src/auth/password.js";
 import { seedAdmin } from "../../src/auth/seedAdmin.js";
 import type { AppConfig } from "../../src/config.js";
 import type { PRD } from "../../src/schemas/prdSchema.js";
@@ -208,6 +209,69 @@ describe("buildServer", () => {
     });
   });
 
+  it("enforces user ownership while allowing API key access", async () => {
+    const users = new MemoryUserStore();
+    const sessions = new MemorySessionStore();
+    await seedAdmin(users, config);
+    await users.create({
+      username: "other-user",
+      passwordHash: await hashPassword("other-password"),
+      role: "user",
+      status: "active",
+      email: null,
+    });
+    const instance = await buildServer({
+      config,
+      storage,
+      taskService: new TaskService({ runner }),
+      users,
+      sessions,
+    });
+    apps.push(instance);
+
+    const ownerLogin = await instance.inject({
+      method: "POST",
+      url: "/api/auth/login",
+      payload: { username: "admin", password: "admin-change-me" },
+    });
+    const otherLogin = await instance.inject({
+      method: "POST",
+      url: "/api/auth/login",
+      payload: { username: "other-user", password: "other-password" },
+    });
+    const created = await instance.inject({
+      method: "POST",
+      url: "/api/generate",
+      ...multipartWithoutAuth({ textDescription: "private requirements" }),
+      cookies: { sid: ownerLogin.cookies.find((cookie) => cookie.name === "sid")!.value },
+    });
+    const { threadId } = created.json<{ threadId: string }>();
+
+    const ownerRead = await instance.inject({
+      method: "GET",
+      url: `/api/thread/${threadId}`,
+      cookies: { sid: ownerLogin.cookies.find((cookie) => cookie.name === "sid")!.value },
+    });
+    const otherRead = await instance.inject({
+      method: "GET",
+      url: `/api/thread/${threadId}`,
+      cookies: { sid: otherLogin.cookies.find((cookie) => cookie.name === "sid")!.value },
+    });
+    const apiKeyRead = await instance.inject({
+      method: "GET",
+      url: `/api/thread/${threadId}`,
+      headers: { authorization: `Bearer ${config.apiKey}` },
+    });
+
+    expect(ownerRead.statusCode).toBe(200);
+    expect(otherRead.statusCode).toBe(403);
+    expect(otherRead.json()).toEqual({
+      code: "FORBIDDEN",
+      message: "You do not have access to this task",
+    });
+    expect(apiKeyRead.statusCode).toBe(200);
+  });
+
   it("limits login attempts to five per IP each minute", async () => {
     const instance = await app();
 
@@ -314,10 +378,13 @@ describe("buildServer", () => {
 
   it("returns thread snapshots and handles missing export artifacts", async () => {
     const taskService = new TaskService({ runner });
-    const { threadId } = await taskService.createTask({
-      files: [],
-      textDescription: "查询任务",
-    });
+    const { threadId } = await taskService.createTask(
+      {
+        files: [],
+        textDescription: "查询任务",
+      },
+      { kind: "apiKey" },
+    );
     const instance = await app(taskService);
     const headers = { authorization: `Bearer ${config.apiKey}` };
 
@@ -355,10 +422,13 @@ describe("buildServer", () => {
         },
       },
     });
-    const { threadId } = await taskService.createTask({
-      files: [],
-      textDescription: "导出 JSON",
-    });
+    const { threadId } = await taskService.createTask(
+      {
+        files: [],
+        textDescription: "导出 JSON",
+      },
+      { kind: "apiKey" },
+    );
     await new Promise<void>((resolve) => setImmediate(resolve));
     const instance = await app(taskService);
 

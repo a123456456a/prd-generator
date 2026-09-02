@@ -1,8 +1,7 @@
 import { defineStore } from "pinia";
 import { ref } from "vue";
-import { ApiError, apiFetch } from "@/api/client";
+import { ApiError, apiFetch, handleUnauthorized } from "@/api/client";
 import { parseSseStream } from "@/api/sse";
-import { useAuthStore } from "@/stores/auth";
 
 export type OutputLanguage = "zh-CN" | "en-US";
 export type ReviewAction = "approve" | "edit" | "reject";
@@ -145,7 +144,7 @@ export const useJobStore = defineStore("job", () => {
         credentials: "include",
         body: form,
       });
-      if (response.status === 401) useAuthStore().clearUser();
+      if (response.status === 401) handleUnauthorized();
       if (!response.ok) throw await responseError(response);
       await parseSseStream(response, handleEvent);
     } catch (error) {

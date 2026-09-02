@@ -4,6 +4,7 @@ import cookie from "@fastify/cookie";
 import Fastify, { type FastifyInstance } from "fastify";
 import { MemorySessionStore } from "../../src/auth/memorySessionStore.js";
 import { MemoryUserStore } from "../../src/auth/memoryUserStore.js";
+import { verifyPassword } from "../../src/auth/password.js";
 import { seedAdmin } from "../../src/auth/seedAdmin.js";
 import type { AppConfig } from "../../src/config.js";
 import { registerPrincipal, requireAuth } from "../../src/middleware/auth.js";
@@ -42,6 +43,7 @@ export type AuthTestApp = {
 
 export async function buildAuthTestApp(
   config: AppConfig = defaultAuthTestConfig,
+  passwordVerifier = verifyPassword,
 ): Promise<AuthTestApp> {
   const users = new MemoryUserStore();
   const sessions = new MemorySessionStore();
@@ -49,7 +51,12 @@ export async function buildAuthTestApp(
 
   const app = Fastify({ logger: false });
   await app.register(cookie);
-  await registerAuthRoutes(app, { config, users, sessions });
+  await registerAuthRoutes(app, {
+    config,
+    users,
+    sessions,
+    verifyPassword: passwordVerifier,
+  });
   return { app, users, sessions, config };
 }
 

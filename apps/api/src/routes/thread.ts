@@ -1,4 +1,5 @@
 import type { FastifyPluginAsync, FastifyReply } from "fastify";
+import type { Principal } from "../middleware/auth.js";
 import {
   RegenerateBodySchema,
   ResumeTaskBodySchema,
@@ -16,6 +17,28 @@ function requireTask(taskService: TaskService, threadId: string): TaskSnapshot {
     throw new AppError("TASK_NOT_FOUND", `任务不存在：${threadId}`, 404);
   }
   return task;
+}
+
+function requireAuthorizedTask(
+  taskService: TaskService,
+  threadId: string,
+  principal: Principal | null,
+): TaskSnapshot {
+  const task = requireTask(taskService, threadId);
+  // API keys are trusted automation credentials with global task access.
+  if (
+    principal?.kind === "apiKey" ||
+    (principal?.kind === "user" &&
+      task.owner.kind === "user" &&
+      task.owner.userId === principal.userId)
+  ) {
+    return task;
+  }
+  throw new AppError(
+    "FORBIDDEN",
+    "You do not have access to this task",
+    403,
+  );
 }
 
 function parseBody<T>(
@@ -68,13 +91,21 @@ export const threadRoutes: FastifyPluginAsync<ThreadRoutesOptions> = async (
   { taskService },
 ) => {
   app.get<{ Params: ThreadParams }>("/thread/:threadId", async (request) =>
-    requireTask(taskService, request.params.threadId),
+    requireAuthorizedTask(
+      taskService,
+      request.params.threadId,
+      request.principal,
+    ),
   );
 
   app.get<{ Params: ThreadParams }>(
     "/thread/:threadId/stream",
     async (request, reply) => {
-      const task = requireTask(taskService, request.params.threadId);
+      const task = requireAuthorizedTask(
+        taskService,
+        request.params.threadId,
+        request.principal,
+      );
       openTaskStream(reply, taskService, task);
       return reply;
     },
@@ -83,7 +114,11 @@ export const threadRoutes: FastifyPluginAsync<ThreadRoutesOptions> = async (
   app.post<{ Params: ThreadParams; Body: unknown }>(
     "/thread/:threadId/resume",
     async (request) => {
-      requireTask(taskService, request.params.threadId);
+      requireAuthorizedTask(
+        taskService,
+        request.params.threadId,
+        request.principal,
+      );
       const body = parseBody(ResumeTaskBodySchema, request.body);
       await taskService.resumeTask(request.params.threadId, body);
       return taskService.getTask(request.params.threadId);
@@ -93,7 +128,11 @@ export const threadRoutes: FastifyPluginAsync<ThreadRoutesOptions> = async (
   app.post<{ Params: ThreadParams; Body: unknown }>(
     "/thread/:threadId/regenerate",
     async (request) => {
-      requireTask(taskService, request.params.threadId);
+      requireAuthorizedTask(
+        taskService,
+        request.params.threadId,
+        request.principal,
+      );
       const body = parseBody(RegenerateBodySchema, request.body);
       await taskService.regenerate(request.params.threadId, body.target);
       return taskService.getTask(request.params.threadId);
@@ -103,7 +142,11 @@ export const threadRoutes: FastifyPluginAsync<ThreadRoutesOptions> = async (
   app.delete<{ Params: ThreadParams }>(
     "/thread/:threadId",
     async (request, reply) => {
-      requireTask(taskService, request.params.threadId);
+      requireAuthorizedTask(
+        taskService,
+        request.params.threadId,
+        request.principal,
+      );
       await taskService.cancelTask(request.params.threadId);
       return reply.code(204).send();
     },
@@ -112,7 +155,11 @@ export const threadRoutes: FastifyPluginAsync<ThreadRoutesOptions> = async (
   app.get<{ Params: ThreadParams }>(
     "/thread/:threadId/export/prd.md",
     async (request, reply) => {
-      const task = requireTask(taskService, request.params.threadId);
+      const task = requireAuthorizedTask(
+        taskService,
+        request.params.threadId,
+        request.principal,
+      );
       if (!task.prdMarkdown) {
         throw new AppError("NOT_FOUND", "PRD Markdown export is not available", 404);
       }
@@ -123,7 +170,11 @@ export const threadRoutes: FastifyPluginAsync<ThreadRoutesOptions> = async (
   app.get<{ Params: ThreadParams }>(
     "/thread/:threadId/export/prd.json",
     async (request, reply) => {
-      const task = requireTask(taskService, request.params.threadId);
+      const task = requireAuthorizedTask(
+        taskService,
+        request.params.threadId,
+        request.principal,
+      );
       if (!task.prd) {
         throw new AppError("NOT_FOUND", "PRD JSON export is not available", 404);
       }
@@ -134,7 +185,11 @@ export const threadRoutes: FastifyPluginAsync<ThreadRoutesOptions> = async (
   app.get<{ Params: ThreadParams }>(
     "/thread/:threadId/export/prototype.html",
     async (request, reply) => {
-      const task = requireTask(taskService, request.params.threadId);
+      const task = requireAuthorizedTask(
+        taskService,
+        request.params.threadId,
+        request.principal,
+      );
       if (!task.prototypeHtml) {
         throw new AppError("NOT_FOUND", "Prototype HTML export is not available", 404);
       }

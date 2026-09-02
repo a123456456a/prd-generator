@@ -6,6 +6,38 @@ type Bucket = {
   updatedAt: number;
 };
 
+type FixedWindow = {
+  count: number;
+  startedAt: number;
+};
+
+export class FixedWindowRateLimiter {
+  private readonly windows = new Map<string, FixedWindow>();
+
+  constructor(
+    private readonly max: number,
+    private readonly windowMs = 60_000,
+  ) {}
+
+  consume(key: string, now = Date.now()): { allowed: boolean; retryAfter: number } {
+    const previous = this.windows.get(key);
+    const window =
+      !previous || now - previous.startedAt >= this.windowMs
+        ? { count: 0, startedAt: now }
+        : previous;
+
+    if (window.count >= this.max) {
+      this.windows.set(key, window);
+      const waitMs = Math.max(1, this.windowMs - (now - window.startedAt));
+      return { allowed: false, retryAfter: Math.ceil(waitMs / 1000) };
+    }
+
+    window.count += 1;
+    this.windows.set(key, window);
+    return { allowed: true, retryAfter: 0 };
+  }
+}
+
 export class TokenBucketRateLimiter {
   private readonly buckets = new Map<string, Bucket>();
 
@@ -40,6 +72,7 @@ export type RateLimiterOptions = {
   windowMs: number;
   max: number;
   keyFn: (request: FastifyRequest) => string;
+  now?: () => number;
 };
 
 /**
@@ -47,13 +80,13 @@ export type RateLimiterOptions = {
  * Login routes should key by client IP; generate routes by `user:<id>` or `key:api`.
  */
 export function createRateLimiter(options: RateLimiterOptions) {
-  const bucket = new TokenBucketRateLimiter(options.max, options.windowMs);
+  const limiter = new FixedWindowRateLimiter(options.max, options.windowMs);
 
   return async function rateLimit(
     request: FastifyRequest,
     reply: FastifyReply,
   ): Promise<void> {
-    const result = bucket.consume(options.keyFn(request));
+    const result = limiter.consume(options.keyFn(request), options.now?.());
     if (!result.allowed) {
       reply.header("Retry-After", result.retryAfter);
       return reply.code(429).send({

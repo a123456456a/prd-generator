@@ -1,18 +1,21 @@
 import type { FastifyInstance } from "fastify";
-import { verifyPassword } from "../auth/password.js";
+import { hashPassword, verifyPassword } from "../auth/password.js";
 import type { SessionStore, UserRecord, UserStore } from "../auth/types.js";
 import type { AppConfig } from "../config.js";
 import { createRateLimiter } from "../middleware/rateLimit.js";
+import { z } from "zod";
+
+const DUMMY_PASSWORD_HASH = await hashPassword("dummy-login-password");
+const LoginBodySchema = z.object({
+  username: z.string(),
+  password: z.string(),
+});
 
 export type AuthRoutesDeps = {
   config: AppConfig;
   users: UserStore;
   sessions: SessionStore;
-};
-
-type LoginBody = {
-  username?: string;
-  password?: string;
+  verifyPassword?: typeof verifyPassword;
 };
 
 function publicUser(user: UserRecord) {
@@ -56,6 +59,7 @@ export async function registerAuthRoutes(
   app: FastifyInstance,
   deps: AuthRoutesDeps,
 ): Promise<void> {
+  const passwordVerifier = deps.verifyPassword ?? verifyPassword;
   const limitLogin = createRateLimiter({
     windowMs: 60_000,
     max: 5,
@@ -66,17 +70,21 @@ export async function registerAuthRoutes(
     "/api/auth/login",
     { preHandler: limitLogin },
     async (request, reply) => {
-      const body = request.body as LoginBody;
-      const username = body.username?.trim() ?? "";
-      const password = body.password ?? "";
+      const parsed = LoginBodySchema.safeParse(request.body);
+      if (!parsed.success) {
+        return reply.code(400).send({
+          code: "INVALID_REQUEST",
+          message: parsed.error.issues.map((issue) => issue.message).join("; "),
+        });
+      }
+      const username = parsed.data.username.trim();
+      const password = parsed.data.password;
 
       const user = await deps.users.findByUsername(username);
-      if (!user || user.status !== "active") {
-        return authInvalid(reply);
-      }
-
-      const valid = await verifyPassword(password, user.passwordHash);
-      if (!valid) {
+      const passwordHash =
+        user?.status === "active" ? user.passwordHash : DUMMY_PASSWORD_HASH;
+      const valid = await passwordVerifier(password, passwordHash);
+      if (!user || user.status !== "active" || !valid) {
         return authInvalid(reply);
       }
 

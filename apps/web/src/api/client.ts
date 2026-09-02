@@ -1,9 +1,21 @@
-import { useAuthStore } from "@/stores/auth";
-
 type ApiErrorBody = {
   code?: unknown;
   message?: unknown;
 };
+
+type UnauthorizedHandler = () => void;
+
+let unauthorizedHandler: UnauthorizedHandler | null = null;
+
+export function setUnauthorizedHandler(
+  handler: UnauthorizedHandler | null,
+): void {
+  unauthorizedHandler = handler;
+}
+
+export function handleUnauthorized(): void {
+  unauthorizedHandler?.();
+}
 
 export class ApiError extends Error {
   constructor(
@@ -42,7 +54,7 @@ export async function apiFetch(
   });
 
   if (response.status === 401) {
-    useAuthStore().clearUser();
+    handleUnauthorized();
   }
 
   if (!response.ok) {

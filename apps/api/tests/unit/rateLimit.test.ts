@@ -9,7 +9,7 @@ describe("createRateLimiter", () => {
     await Promise.all(apps.splice(0).map((app) => app.close()));
   });
 
-  async function appWithLimiter(max: number) {
+  async function appWithLimiter(max: number, now?: () => number) {
     const app = Fastify({ logger: false });
     apps.push(app);
     app.addHook(
@@ -18,6 +18,7 @@ describe("createRateLimiter", () => {
         windowMs: 60_000,
         max,
         keyFn: () => "test-key",
+        now,
       }),
     );
     app.get("/test", async () => ({ ok: true }));
@@ -67,5 +68,29 @@ describe("createRateLimiter", () => {
 
     expect(first.statusCode).toBe(200);
     expect(second.statusCode).toBe(200);
+  });
+
+  it("enforces a hard window before allowing more requests", async () => {
+    let currentTime = 0;
+    const app = await appWithLimiter(5, () => currentTime);
+
+    for (let index = 0; index < 5; index += 1) {
+      expect(
+        (await app.inject({ method: "GET", url: "/test" })).statusCode,
+      ).toBe(200);
+    }
+    expect(
+      (await app.inject({ method: "GET", url: "/test" })).statusCode,
+    ).toBe(429);
+
+    currentTime = 59_999;
+    expect(
+      (await app.inject({ method: "GET", url: "/test" })).statusCode,
+    ).toBe(429);
+
+    currentTime = 60_000;
+    expect(
+      (await app.inject({ method: "GET", url: "/test" })).statusCode,
+    ).toBe(200);
   });
 });

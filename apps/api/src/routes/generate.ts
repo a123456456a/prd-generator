@@ -34,6 +34,13 @@ function isAllowedMimeType(mimeType: string): boolean {
   );
 }
 
+function requirePrincipal(request: FastifyRequest) {
+  if (!request.principal) {
+    throw new AppError("AUTH_REQUIRED", "Authentication required", 401);
+  }
+  return request.principal;
+}
+
 async function cleanupSavedFiles(
   storage: Storage,
   files: StoredFile[],
@@ -156,13 +163,19 @@ export const generateRoutes: FastifyPluginAsync<GenerateRoutesOptions> = async (
 ) => {
   app.post("/generate", async (request) => {
     const input = await readGenerateInput(request, options);
-    const { threadId } = await options.taskService.createTask(input);
+    const { threadId } = await options.taskService.createTask(
+      input,
+      requirePrincipal(request),
+    );
     return { threadId, status: "queued" as const };
   });
 
   app.post("/generate/stream", async (request, reply) => {
     const input = await readGenerateInput(request, options);
-    const { threadId } = await options.taskService.createTask(input);
+    const { threadId } = await options.taskService.createTask(
+      input,
+      requirePrincipal(request),
+    );
     streamTask(reply, options.taskService, threadId);
     return reply;
   });

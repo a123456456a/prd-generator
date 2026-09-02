@@ -9,14 +9,17 @@ import type {
   CreateTaskBody,
   ResumeTaskBody,
 } from "../schemas/apiSchema.js";
+import type { Principal } from "../middleware/auth.js";
 import type { PRD } from "../schemas/prdSchema.js";
 import { AppError } from "../utils/errors.js";
 import type { SseEvent } from "./sse.js";
 
 export type TaskStatus = GraphStatus | "queued" | "running" | "cancelled";
+export type TaskOwner = { kind: "user"; userId: string } | { kind: "apiKey" };
 
 export interface TaskSnapshot {
   threadId: string;
+  owner: TaskOwner;
   status: TaskStatus;
   progress: number;
   prd?: PRD;
@@ -229,12 +232,19 @@ export class TaskService {
     this.runner = options.runner ?? new LangGraphRunner();
   }
 
-  async createTask(input: CreateTaskBody): Promise<{ threadId: string }> {
+  async createTask(
+    input: CreateTaskBody,
+    principal: Principal,
+  ): Promise<{ threadId: string }> {
     const threadId = randomUUID();
     const now = new Date().toISOString();
     const config = this.createConfig(input);
     const snapshot: TaskSnapshot = {
       threadId,
+      owner:
+        principal.kind === "user"
+          ? { kind: "user", userId: principal.userId }
+          : { kind: "apiKey" },
       status: "queued",
       progress: 0,
       prdMarkdown: "",

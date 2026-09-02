@@ -21,6 +21,25 @@ export type AppConfig = {
   corsOrigin: string;
 };
 
+export function assertProductionConfig(config: AppConfig): void {
+  const errors: string[] = [];
+  if (!config.apiKey.trim() || config.apiKey === "dev-api-key") {
+    errors.push("API_KEY must be set to a non-default value");
+  }
+  if (
+    !config.adminPassword.trim() ||
+    config.adminPassword === "admin-change-me"
+  ) {
+    errors.push("ADMIN_PASSWORD must be set to a non-default value");
+  }
+  if (!config.cookieSecure) {
+    errors.push("COOKIE_SECURE must be true");
+  }
+  if (errors.length > 0) {
+    throw new Error(`Invalid production configuration: ${errors.join("; ")}`);
+  }
+}
+
 function resolveRepoPath(value: string): string {
   return path.isAbsolute(value) ? value : path.resolve(REPO_ROOT, value);
 }

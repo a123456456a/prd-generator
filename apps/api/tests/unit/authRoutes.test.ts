@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { FastifyInstance } from "fastify";
 import { hashPassword } from "../../src/auth/password.js";
 import {
@@ -17,8 +17,9 @@ describe("auth routes", () => {
   async function setup(
     config = defaultAuthTestConfig,
     prepare?: (deps: AuthTestApp) => Promise<void>,
+    passwordVerifier?: Parameters<typeof buildAuthTestApp>[1],
   ) {
-    const testApp = await buildAuthTestApp(config);
+    const testApp = await buildAuthTestApp(config, passwordVerifier);
     if (prepare) {
       await prepare(testApp);
     }
@@ -67,7 +68,12 @@ describe("auth routes", () => {
   });
 
   it("rejects unknown username with AUTH_INVALID", async () => {
-    const { app: instance } = await setup();
+    const passwordVerifier = vi.fn(async () => false);
+    const { app: instance } = await setup(
+      defaultAuthTestConfig,
+      undefined,
+      passwordVerifier,
+    );
     const res = await instance.inject({
       method: "POST",
       url: "/api/auth/login",
@@ -75,7 +81,30 @@ describe("auth routes", () => {
     });
     expect(res.statusCode).toBe(401);
     expect(res.json().code).toBe("AUTH_INVALID");
+    expect(passwordVerifier).toHaveBeenCalledOnce();
+    expect(passwordVerifier).toHaveBeenCalledWith(
+      "admin-change-me",
+      expect.stringMatching(/^\$2[aby]\$/),
+    );
   });
+
+  it.each([undefined, {}, { username: "admin" }, { password: "secret" }])(
+    "returns INVALID_REQUEST for malformed login body %#",
+    async (payload) => {
+      const { app: instance } = await setup();
+      const res = await instance.inject({
+        method: "POST",
+        url: "/api/auth/login",
+        ...(payload === undefined ? {} : { payload }),
+      });
+
+      expect(res.statusCode).toBe(400);
+      expect(res.json()).toEqual({
+        code: "INVALID_REQUEST",
+        message: expect.any(String),
+      });
+    },
+  );
 
   it("rejects disabled users with AUTH_INVALID", async () => {
     const { app: instance } = await setup(defaultAuthTestConfig, async ({ users }) => {
