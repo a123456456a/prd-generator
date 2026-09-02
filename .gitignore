@@ -9,3 +9,6 @@ npm-shrinkwrap.json
 yarn.lock
 v20.20.2/
 .superpowers/
+tmp-test.*
+*.tmp.docx
+*.tmp.pdf
