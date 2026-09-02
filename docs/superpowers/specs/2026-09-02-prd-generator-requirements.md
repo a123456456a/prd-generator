@@ -571,7 +571,7 @@ prd-generator/
 | 1 | 人机审阅 | 一期实现；默认关闭，通过 `options.enableHumanReview=true` 开启 |
 | 2 | 默认模型 | PRD/原型用 `gpt-4o`；需求抽取可用更便宜模型（如 `gpt-4o-mini`），均可配置覆盖 |
 | 3 | 文件存储 | 开发/单机用本地 `uploads/`；生产切换 S3 兼容存储（接口抽象） |
-| 4 | 极简前端 | 要：上传 → 进度 → PRD 预览 → 原型 iframe |
+| 4 | 极简前端 | 要：上传 → 进度 → PRD 预览 → 原型 iframe；实现见 `docs/superpowers/specs/2026-09-02-frontend-vue-auth-design.md`（Vue 3 SPA + 登录/API Key 双通路） |
 | 5 | 输出语言 | 默认 `zh-CN`，支持 `options.language` 切换 |
 
 ---
