@@ -6,7 +6,7 @@
 
 **Architecture:** API 仍留在仓库根目录（避免大搬家）；新增 `apps/web` Vue SPA。Web 用 HttpOnly 会话 Cookie；脚本继续 `Authorization: Bearer <API_KEY>`。用户/会话一期用可替换的 Memory 仓库（接口对齐，便于二期 Postgres）。生产由 Fastify 托管 `apps/web/dist`。
 
-**Tech Stack:** Fastify 5、bcryptjs、Zod、Vitest；Vue 3 + Vite + TypeScript、vue-router、vue-i18n、Pinia、pnpm workspace
+**Tech Stack:** Fastify 5、bcryptjs、Zod、Vitest；Vue 3 + Vite + TypeScript + Tailwind CSS、vue-router、vue-i18n、Pinia、pnpm workspace
 
 **Spec:** `docs/superpowers/specs/2026-09-02-frontend-vue-auth-design.md`
 
@@ -18,6 +18,7 @@
 - 密码哈希：bcryptjs（cost 10+）；日志禁止明文密码 / Cookie / Authorization
 - 中间件：有效会话用户 **或** Bearer `API_KEY`；`/api/health`、`/api/auth/login` 放行
 - 限流：登录 5/min/IP；通用 20/min；生成类 5/min；Web 按 `userId`，脚本按 `apiKey`
+- UI 库：一期使用 **Tailwind CSS**（Vue 3 + Vite + `@tailwindcss/vite`）；不强制组件库
 - 包管理：pnpm；API 根包名保持 `prd-generator`；web 包名 `@prd/web`
 - 原型预览仅 `iframe sandbox="allow-scripts"`；禁止 `v-html` 注入生成 HTML
 - 本期不做：开放注册、OAuth、Postgres 用户表、UI 组件库、搬迁 `src/` 到 `apps/api`

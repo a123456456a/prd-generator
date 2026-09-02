@@ -64,7 +64,7 @@ prd-generator/
 | 状态 | Pinia 或等价轻量模块（`user` / `thread` / `job`） |
 | HTTP | `fetch` + `credentials: 'include'` |
 | SSE | 自研 composable：`useSseStream`（POST + `ReadableStream` 解析） |
-| UI 库 | 一期不强制；页面少，优先自写样式 |
+| UI | Tailwind CSS（`@tailwindcss/vite`）；一期不强制组件库 |
 
 ### 2.3 开发与部署
 
