@@ -64,4 +64,32 @@ describe("runTtlCleanup", () => {
     expect(await taskStore.get("active-thread")).not.toBeNull();
     expect(deleteThread).toHaveBeenCalledWith("expired-thread");
   });
+
+  it("removes persisted artifacts for expired tasks only", async () => {
+    const taskStore = new MemoryTaskStore();
+    const past = new Date("2020-01-01T00:00:00.000Z");
+    await taskStore.save(
+      makeTask({ threadId: "expired-thread", expiresAt: past.toISOString() }),
+    );
+    await taskStore.save(
+      makeTask({
+        threadId: "active-thread",
+        expiresAt: new Date("2099-01-01T00:00:00.000Z").toISOString(),
+      }),
+    );
+
+    const remove = vi.fn().mockResolvedValue(undefined);
+    const now = new Date("2025-01-01T00:00:00.000Z");
+
+    await runTtlCleanup({
+      taskStore,
+      storage: noopStorage,
+      artifactWriter: { write: vi.fn(), remove },
+      checkpointer: { deleteThread: vi.fn() },
+      now,
+    });
+
+    expect(remove).toHaveBeenCalledTimes(1);
+    expect(remove).toHaveBeenCalledWith("expired-thread");
+  });
 });

@@ -9,6 +9,8 @@ import {
 import { MemoryTaskStore } from "../../src/services/taskStore.js";
 import type { TaskQueue } from "../../src/services/taskQueue.js";
 import { MemoryUsageStore } from "../../src/services/usageStore.js";
+import type { ArtifactWriter } from "../../src/services/artifactWriter.js";
+import { logger } from "../../src/utils/logger.js";
 import { AppError } from "../../src/utils/errors.js";
 
 const apiKeyPrincipal = { kind: "apiKey" } as const;
@@ -409,5 +411,62 @@ describe("TaskService", () => {
     expect(requests[1]).toEqual(
       expect.objectContaining({ kind: "regenerate", target: "prototype" }),
     );
+  });
+
+  it("persists deliverables via the artifact writer as they are produced", async () => {
+    const release = deferred<void>();
+    const runner: TaskGraphRunner = {
+      async *run() {
+        await release.promise;
+        yield { status: "generating_prototype", progress: 75, prdMarkdown: "# PRD" };
+        yield {
+          status: "completed",
+          progress: 100,
+          prototypeHtml: "<!doctype html><html></html>",
+        };
+      },
+    };
+    const write = vi.fn().mockResolvedValue(undefined);
+    const artifactWriter: ArtifactWriter = { write, remove: vi.fn() };
+    const service = createService({ runner, artifactWriter });
+    const { threadId } = await service.createTask({ files: [] }, apiKeyPrincipal);
+
+    release.resolve();
+    await vi.waitFor(async () => {
+      expect((await service.getTask(threadId))?.status).toBe("completed");
+    });
+
+    expect(write).toHaveBeenCalledWith(
+      expect.objectContaining({ threadId, prdMarkdown: "# PRD" }),
+    );
+    expect(write).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        threadId,
+        status: "completed",
+        prototypeHtml: "<!doctype html><html></html>",
+      }),
+    );
+  });
+
+  it("does not let an artifact write failure break task processing", async () => {
+    const errorSpy = vi.spyOn(logger, "error").mockImplementation(() => logger);
+    const runner: TaskGraphRunner = {
+      async *run() {
+        yield { status: "completed", progress: 100, prdMarkdown: "# PRD" };
+      },
+    };
+    const artifactWriter: ArtifactWriter = {
+      write: vi.fn().mockRejectedValue(new Error("disk full")),
+      remove: vi.fn(),
+    };
+    const service = createService({ runner, artifactWriter });
+
+    const { threadId } = await service.createTask({ files: [] }, apiKeyPrincipal);
+
+    await vi.waitFor(async () => {
+      expect((await service.getTask(threadId))?.status).toBe("completed");
+    });
+    expect(errorSpy).toHaveBeenCalled();
+    errorSpy.mockRestore();
   });
 });

@@ -28,6 +28,8 @@ import {
   MemoryUsageStore,
   type UsageStore,
 } from "./usageStore.js";
+import { NoopArtifactWriter, type ArtifactWriter } from "./artifactWriter.js";
+import { logger } from "../utils/logger.js";
 
 export type TaskStatus = GraphStatus | "queued" | "running" | "cancelled";
 export type TaskOwner = { kind: "user"; userId: string } | { kind: "apiKey" };
@@ -279,6 +281,7 @@ export class TaskService {
   private readonly config: AppConfig;
   private readonly queue: TaskQueue;
   private readonly usageEstimator: UsageEstimator;
+  private readonly artifactWriter: ArtifactWriter;
 
   constructor(
     options: {
@@ -289,6 +292,8 @@ export class TaskService {
       checkpointer?: BaseCheckpointSaver<number>;
       queue?: TaskQueue;
       usageEstimator?: UsageEstimator;
+      /** Persists deliverables to disk (e.g. `outputs/<threadId>/`). Defaults to a no-op. */
+      artifactWriter?: ArtifactWriter;
     } = {},
   ) {
     this.runner =
@@ -300,6 +305,7 @@ export class TaskService {
     this.queue =
       options.queue ?? new InProcessQueue(this.config.maxConcurrentTasks);
     this.usageEstimator = options.usageEstimator ?? defaultUsageEstimator;
+    this.artifactWriter = options.artifactWriter ?? new NoopArtifactWriter();
   }
 
   async createTask(
@@ -550,6 +556,11 @@ export class TaskService {
     }
     this.tasks.set(task.threadId, task);
     await this.store.save({ ...task });
+    try {
+      await this.artifactWriter.write(task);
+    } catch (error) {
+      logger.error({ error, threadId: task.threadId }, "Failed to persist task artifacts to disk");
+    }
   }
 
   private resultPayload(task: TaskSnapshot) {
