@@ -11,6 +11,8 @@ import { TaskService } from "./services/taskService.js";
 import { createTaskStore } from "./services/taskStore.js";
 import { createUsageStore } from "./services/usageStore.js";
 import { runStartup } from "./startup.js";
+import { createStorage } from "./storage/index.js";
+import { runTtlCleanup } from "./services/ttlCleanup.js";
 
 const apiRoot = path.resolve(fileURLToPath(new URL("..", import.meta.url)));
 dotenv.config({ path: path.join(REPO_ROOT, ".env") });
@@ -32,7 +34,26 @@ const taskService = new TaskService({
   checkpointer,
 });
 
-const app = await buildServer({ config, users, sessions, taskService });
+const storage = createStorage(config);
+const app = await buildServer({ config, users, sessions, taskService, storage });
+
+const ttlTimer = setInterval(
+  () => {
+    void runTtlCleanup({
+      taskStore,
+      sessionStore: sessions,
+      storage,
+      checkpointer,
+    }).catch((error) => {
+      app.log.error(error, "TTL cleanup failed");
+    });
+  },
+  60 * 60 * 1000,
+);
+
+process.on("SIGTERM", () => {
+  clearInterval(ttlTimer);
+});
 
 try {
   await runStartup(pool, async () => {

@@ -52,4 +52,8 @@ export class PostgresSessionStore implements SessionStore {
   async delete(id: string): Promise<void> {
     await this.pool.query(`DELETE FROM sessions WHERE id = $1`, [id]);
   }
+
+  async deleteExpired(now: Date): Promise<void> {
+    await this.pool.query(`DELETE FROM sessions WHERE expires_at < $1`, [now]);
+  }
 }
