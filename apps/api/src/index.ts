@@ -7,6 +7,7 @@ import { assertProductionConfig, loadConfig } from "./config.js";
 import { bootstrapPersistence } from "./db/bootstrap.js";
 import { REPO_ROOT } from "./paths.js";
 import { buildServer } from "./server.js";
+import { runStartup } from "./startup.js";
 
 const apiRoot = path.resolve(fileURLToPath(new URL("..", import.meta.url)));
 dotenv.config({ path: path.join(REPO_ROOT, ".env") });
@@ -23,8 +24,10 @@ await seedAdmin(users, config);
 const app = await buildServer({ config, users, sessions });
 
 try {
-  const address = await app.listen({ port: config.port, host: "0.0.0.0" });
-  app.log.info(`PRD Generator listening at ${address}`);
+  await runStartup(pool, async () => {
+    const address = await app.listen({ port: config.port, host: "0.0.0.0" });
+    app.log.info(`PRD Generator listening at ${address}`);
+  });
 } catch (error) {
   app.log.error(error);
   process.exitCode = 1;
