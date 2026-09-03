@@ -31,7 +31,7 @@ function afterPrd(
   return state.status === "generating_prototype" ? "generate_prototype" : END;
 }
 
-function createDefaultModelFactory(): (model: string) => GraphModel {
+export function createDefaultModelFactory(): (model: string) => GraphModel {
   const config = loadConfig();
   const structuredOpts = structuredOutputOptions({
     openaiBaseUrl: config.openaiBaseUrl,

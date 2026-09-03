@@ -5,11 +5,19 @@ import { parseSseStream } from "@/api/sse";
 
 export type OutputLanguage = "zh-CN" | "en-US";
 export type ReviewAction = "approve" | "edit" | "reject";
+export type ReviseTarget = "prd" | "prototype";
 
 export type JobEvent = {
   event: string;
   data: unknown;
   receivedAt: string;
+};
+
+export type ConversationTurn = {
+  role: "user" | "assistant";
+  target: ReviseTarget;
+  message: string;
+  createdAt: string;
 };
 
 export type JobSnapshot = {
@@ -20,6 +28,7 @@ export type JobSnapshot = {
   prdMarkdown?: string;
   prototypeHtml?: string;
   error?: string;
+  conversation?: ConversationTurn[];
 };
 
 export type JobUiError = {
@@ -59,9 +68,11 @@ export const useJobStore = defineStore("job", () => {
   const prd = ref<unknown>(null);
   const prdMarkdown = ref("");
   const prototypeHtml = ref("");
+  const conversation = ref<ConversationTurn[]>([]);
   const uiError = ref<JobUiError | null>(null);
   const outputLanguage = ref<OutputLanguage>("zh-CN");
   const busy = ref(false);
+  const chatBusy = ref(false);
 
   function applySnapshot(snapshot: Partial<JobSnapshot>) {
     if (typeof snapshot.threadId === "string") {
@@ -78,6 +89,9 @@ export const useJobStore = defineStore("job", () => {
     }
     if (typeof snapshot.prototypeHtml === "string") {
       prototypeHtml.value = snapshot.prototypeHtml;
+    }
+    if (Array.isArray(snapshot.conversation)) {
+      conversation.value = snapshot.conversation;
     }
     if (snapshot.error) {
       uiError.value = { code: "GENERATION_FAILED", message: snapshot.error };
@@ -122,6 +136,7 @@ export const useJobStore = defineStore("job", () => {
     prd.value = null;
     prdMarkdown.value = "";
     prototypeHtml.value = "";
+    conversation.value = [];
     outputLanguage.value = input.language;
 
     const form = new FormData();
@@ -203,6 +218,25 @@ export const useJobStore = defineStore("job", () => {
     }
   }
 
+  async function revise(target: ReviseTarget, message: string) {
+    if (!threadId.value || !message.trim()) return;
+    chatBusy.value = true;
+    uiError.value = null;
+    try {
+      const response = await apiFetch(`/api/thread/${threadId.value}/revise`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ target, message: message.trim() }),
+      });
+      applySnapshot((await response.json()) as JobSnapshot);
+    } catch (error) {
+      setError(error);
+      throw error;
+    } finally {
+      chatBusy.value = false;
+    }
+  }
+
   async function downloadExport(
     format: "prd.md" | "prd.json" | "prototype.html",
   ) {
@@ -233,12 +267,15 @@ export const useJobStore = defineStore("job", () => {
     prd,
     prdMarkdown,
     prototypeHtml,
+    conversation,
     uiError,
     outputLanguage,
     busy,
+    chatBusy,
     startGenerate,
     restore,
     resume,
+    revise,
     downloadExport,
   };
 });

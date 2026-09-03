@@ -5,6 +5,7 @@ import { useI18n } from "vue-i18n";
 import {
   useJobStore,
   type ReviewAction,
+  type ReviseTarget,
 } from "@/stores/job";
 
 const { t, te } = useI18n();
@@ -17,9 +18,11 @@ const {
   prd,
   prdMarkdown,
   prototypeHtml,
+  conversation,
   uiError,
   outputLanguage,
   busy,
+  chatBusy,
 } = storeToRefs(job);
 
 const selectedFiles = ref<File[]>([]);
@@ -32,11 +35,19 @@ const prdPatch = ref("");
 const feedback = ref("");
 const formError = ref("");
 const reviewError = ref("");
+const chatTarget = ref<ReviseTarget>("prd");
+const chatMessage = ref("");
+const chatError = ref("");
 
 const hasInput = computed(
   () => selectedFiles.value.length > 0 || Boolean(textDescription.value.trim()),
 );
 const awaitingReview = computed(() => phase.value === "awaiting_review");
+const hasGeneratedContent = computed(() => Boolean(prd.value || prototypeHtml.value));
+const canReviseTarget = computed(() => ({
+  prd: Boolean(prd.value),
+  prototype: Boolean(prototypeHtml.value),
+}));
 const statusLabel = computed(() => {
   const key = `workbench.status.${phase.value}`;
   return te(key) ? t(key) : phase.value;
@@ -109,6 +120,21 @@ async function submitReview() {
       prdPatch: patch,
       feedback: feedback.value.trim(),
     });
+  } catch {
+    // The store exposes a translated error payload to the view.
+  }
+}
+
+async function sendRevision() {
+  chatError.value = "";
+  if (!chatMessage.value.trim()) {
+    chatError.value = t("workbench.chat.messageRequired");
+    return;
+  }
+  try {
+    const message = chatMessage.value.trim();
+    await job.revise(chatTarget.value, message);
+    chatMessage.value = "";
   } catch {
     // The store exposes a translated error payload to the view.
   }
@@ -394,6 +420,101 @@ onMounted(() => {
         :title="t('workbench.result.prototypeFrame')"
         class="mt-4 min-h-[32rem] w-full rounded-xl border border-line bg-white"
       />
+    </section>
+
+    <section
+      v-if="hasGeneratedContent"
+      class="rounded-2xl border border-line bg-panel p-4 sm:p-6"
+    >
+      <h2 class="text-lg font-semibold text-ink">
+        {{ t("workbench.chat.title") }}
+      </h2>
+      <p class="mt-1 text-sm text-ink-muted">
+        {{ t("workbench.chat.description") }}
+      </p>
+
+      <ol
+        class="mt-4 max-h-96 space-y-3 overflow-y-auto rounded-xl border border-line bg-black/20 p-3"
+        :aria-label="t('workbench.chat.title')"
+      >
+        <li v-if="conversation.length === 0" class="text-sm text-ink-faint">
+          {{ t("workbench.chat.empty") }}
+        </li>
+        <li
+          v-for="(turn, index) in conversation"
+          :key="`${turn.createdAt}-${index}`"
+          class="flex"
+          :class="turn.role === 'user' ? 'justify-end' : 'justify-start'"
+        >
+          <div
+            class="max-w-[85%] rounded-xl px-3 py-2 text-sm leading-6"
+            :class="
+              turn.role === 'user'
+                ? 'bg-accent text-white'
+                : 'bg-panel-muted text-ink'
+            "
+          >
+            <p class="text-xs font-medium opacity-70">
+              {{ turn.role === "user" ? t("workbench.chat.you") : t("workbench.chat.assistant") }}
+              ·
+              {{
+                turn.target === "prd"
+                  ? t("workbench.chat.targetPrd")
+                  : t("workbench.chat.targetPrototype")
+              }}
+            </p>
+            <p class="mt-1 whitespace-pre-wrap break-words">{{ turn.message }}</p>
+          </div>
+        </li>
+      </ol>
+
+      <form class="mt-4 space-y-3" @submit.prevent="sendRevision">
+        <div class="flex flex-wrap gap-2">
+          <button
+            type="button"
+            class="rounded-lg px-3 py-1.5 text-sm font-medium transition"
+            :class="
+              chatTarget === 'prd'
+                ? 'bg-accent text-white'
+                : 'bg-panel-muted text-ink-muted hover:text-ink'
+            "
+            :disabled="!canReviseTarget.prd"
+            @click="chatTarget = 'prd'"
+          >
+            {{ t("workbench.chat.targetPrd") }}
+          </button>
+          <button
+            type="button"
+            class="rounded-lg px-3 py-1.5 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-40"
+            :class="
+              chatTarget === 'prototype'
+                ? 'bg-accent text-white'
+                : 'bg-panel-muted text-ink-muted hover:text-ink'
+            "
+            :disabled="!canReviseTarget.prototype"
+            :title="!canReviseTarget.prototype ? t('workbench.chat.targetPrototypeDisabled') : undefined"
+            @click="chatTarget = 'prototype'"
+          >
+            {{ t("workbench.chat.targetPrototype") }}
+          </button>
+        </div>
+        <textarea
+          v-model="chatMessage"
+          :disabled="chatBusy"
+          class="min-h-20 w-full rounded-xl border border-line-strong bg-panel-muted px-3 py-2 text-sm text-ink outline-none transition focus:border-accent focus:ring-2 focus:ring-accent-soft"
+          :placeholder="t('workbench.chat.placeholder')"
+        />
+        <p v-if="chatError" role="alert" class="text-sm text-danger">
+          {{ chatError }}
+        </p>
+        <button
+          type="submit"
+          :disabled="chatBusy"
+          class="rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-accent-strong disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          {{ chatBusy ? t("workbench.chat.sending") : t("workbench.chat.send") }}
+        </button>
+      </form>
     </section>
 
     <section

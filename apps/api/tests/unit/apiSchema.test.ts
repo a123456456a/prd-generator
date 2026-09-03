@@ -3,6 +3,7 @@ import {
   CreateTaskBodySchema,
   RegenerateBodySchema,
   ResumeTaskBodySchema,
+  ReviseBodySchema,
 } from "../../src/schemas/apiSchema.js";
 
 describe("Task API schemas", () => {
@@ -36,5 +37,18 @@ describe("Task API schemas", () => {
       target: "prototype",
     });
     expect(() => RegenerateBodySchema.parse({ target: "all" })).toThrow();
+  });
+
+  it("requires a non-empty message for natural-language revisions", () => {
+    expect(
+      ReviseBodySchema.parse({ target: "prd", message: "把标题改一下" }),
+    ).toEqual({ target: "prd", message: "把标题改一下" });
+    expect(() =>
+      ReviseBodySchema.parse({ target: "prd", message: "   " }),
+    ).toThrow();
+    expect(() => ReviseBodySchema.parse({ target: "prd" })).toThrow();
+    expect(() =>
+      ReviseBodySchema.parse({ target: "all", message: "改一下" }),
+    ).toThrow();
   });
 });

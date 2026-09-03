@@ -261,6 +261,7 @@ interface PRD {
 | `GET` | `/api/thread/:threadId/stream` | 订阅已有任务进度 |
 | `POST` | `/api/thread/:threadId/resume` | 补充澄清信息 / 提交人工编辑后继续 |
 | `POST` | `/api/thread/:threadId/regenerate` | 局部重生：`prd` \| `prototype` |
+| `POST` | `/api/thread/:threadId/revise` | 自然语言对话式小改：`{ target, message }`，不重新生成，仅在现有内容上做定向修改（见 §3.8） |
 | `DELETE` | `/api/thread/:threadId` | 取消运行中任务或删除结果 |
 | `GET` | `/api/health` | 健康检查 |
 | `GET` | `/api/thread/:threadId/export/prd.md` | 下载 Markdown |
@@ -337,6 +338,19 @@ data: {"threadId":"...","status":"completed"}
    - `action: "edit"` + `prdPatch`（JSON Merge Patch）后继续；
    - `action: "reject"` + `feedback` 则回到 `generate_prd` 并带上反馈。
 3. `regenerate` 支持只改原型或只改 PRD，避免重复解析、节省 Token。
+
+---
+
+### 3.8 对话式小修小改（FR-CHAT）— 弥补「无局部重生」中「自然语言小改」的缺口
+
+背景：`edit`（JSON Merge Patch）要求用户手写合法 JSON，门槛高且只覆盖 PRD；`regenerate`/`reject` 都是全量重新生成，改一处可能连带改坏其它没问题的地方。为此新增一条不经过图状态机、直接对现有产出物做定向增量修改的通道：
+
+1. `POST /api/thread/:threadId/revise`，请求体 `{ target: "prd" | "prototype", message: string }`。仅当任务处于 `completed` 或 `awaiting_review`，且 `target` 对应的产出物已存在时可用（`prototype` 还要求已生成过原型）。
+2. 后端将用户的自然语言反馈 + 现有 `prd`/`prototypeHtml` + 最近若干轮对话历史一并交给模型：
+   - `target: "prd"` 时用结构化输出要求模型返回完整的修改后 PRD（未提及的字段保持不变）以及一句话的 `changeSummary`，本地不做重新解析/抽取，只替换 `prd`/`prdMarkdown`。
+   - `target: "prototype"` 时要求模型只输出一行摘要注释 + 修改后的完整 HTML（其余部分保持不变），通过既有 `assertPrototypeHtml` 校验后替换 `prototypeHtml`。
+3. 修改成功或失败都会把这一轮的用户消息与助手回复（含失败原因）追加进任务的 `conversation` 历史，随任务快照一并返回/持久化，供前端渲染成聊天记录；修改过程中任务状态短暂置为 `running`，完成后恢复为修改前的状态（不会像 `regenerate`/`reject` 那样把任务打回更早的阶段）。
+4. 与 `regenerate`（全量重来）、`edit`（结构化 patch）互补：日常「小修小改」优先走 `revise`，避免因为一句话的调整而重新消耗一次完整的 PRD/原型生成的 Token。
 
 ---
 

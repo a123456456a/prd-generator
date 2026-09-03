@@ -1,6 +1,7 @@
 import type { Pool } from "pg";
 import type { GraphConfig } from "../graph/state.js";
 import type { PRD } from "../schemas/prdSchema.js";
+import type { ConversationTurn } from "../types/conversation.js";
 import type { TaskOwner, TaskSnapshot, TaskStatus } from "./taskService.js";
 import type { TaskStore } from "./taskStore.js";
 
@@ -18,6 +19,7 @@ type TaskRow = {
   config: GraphConfig;
   extracted_text: string;
   structured_requirements: unknown;
+  conversation: ConversationTurn[];
   created_at: Date;
   updated_at: Date;
   expires_at: Date | null;
@@ -41,6 +43,7 @@ function toTaskSnapshot(row: TaskRow): TaskSnapshot {
     gaps: row.gaps ?? [],
     config: row.config ?? {},
     extractedText: row.extracted_text,
+    conversation: row.conversation ?? [],
     createdAt: row.created_at.toISOString(),
     updatedAt: row.updated_at.toISOString(),
   };
@@ -66,7 +69,7 @@ function ownerParams(owner: TaskOwner): {
 const TASK_COLUMNS = `
   thread_id, owner_kind, owner_user_id, status, progress,
   prd, prd_markdown, prototype_html, error, gaps, config,
-  extracted_text, structured_requirements, created_at, updated_at, expires_at
+  extracted_text, structured_requirements, conversation, created_at, updated_at, expires_at
 `;
 
 export class PostgresTaskStore implements TaskStore {
@@ -79,11 +82,11 @@ export class PostgresTaskStore implements TaskStore {
       `INSERT INTO tasks (
          thread_id, owner_kind, owner_user_id, status, progress,
          prd, prd_markdown, prototype_html, error, gaps, config,
-         extracted_text, structured_requirements, created_at, updated_at, expires_at
+         extracted_text, structured_requirements, conversation, created_at, updated_at, expires_at
        ) VALUES (
          $1, $2, $3, $4, $5,
          $6, $7, $8, $9, $10::jsonb, $11::jsonb,
-         $12, $13::jsonb, $14, $15, $16
+         $12, $13::jsonb, $14::jsonb, $15, $16, $17
        )
        ON CONFLICT (thread_id) DO UPDATE SET
          owner_kind = EXCLUDED.owner_kind,
@@ -98,6 +101,7 @@ export class PostgresTaskStore implements TaskStore {
          config = EXCLUDED.config,
          extracted_text = EXCLUDED.extracted_text,
          structured_requirements = EXCLUDED.structured_requirements,
+         conversation = EXCLUDED.conversation,
          updated_at = EXCLUDED.updated_at,
          expires_at = EXCLUDED.expires_at`,
       [
@@ -114,6 +118,7 @@ export class PostgresTaskStore implements TaskStore {
         JSON.stringify(task.config),
         task.extractedText,
         task.structuredRequirements ?? null,
+        JSON.stringify(task.conversation ?? []),
         task.createdAt,
         task.updatedAt,
         expiresAt,
