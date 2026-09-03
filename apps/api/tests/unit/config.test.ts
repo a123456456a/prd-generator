@@ -10,6 +10,7 @@ const baseConfig: AppConfig = {
   apiKey: "strong-api-key",
   openaiApiKey: "",
   openaiBaseUrl: null,
+  structuredOutputMethod: null,
   extractModel: "test-extract",
   prdModel: "test-prd",
   uploadDir: "unused",

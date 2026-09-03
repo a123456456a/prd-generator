@@ -2,8 +2,12 @@ import { z } from "zod";
 import { buildExtractPrompt } from "../../prompts/extractPrompt.js";
 import type { GraphModel, GraphStateType } from "../state.js";
 
+/** Flat schema keeps DeepSeek functionCalling reliable (nested free-form objects often stringify). */
 const ExtractedRequirementsSchema = z.object({
-  structuredRequirements: z.unknown(),
+  productSummary: z.string(),
+  keyFeatures: z.array(z.string()),
+  targetUsers: z.array(z.string()),
+  constraints: z.array(z.string()),
   gaps: z.array(z.string()),
 });
 
@@ -29,11 +33,17 @@ export function createExtractRequirementsNode(
           ),
         ),
       );
+      const structuredRequirements = {
+        productSummary: output.productSummary,
+        keyFeatures: output.keyFeatures,
+        targetUsers: output.targetUsers,
+        constraints: output.constraints,
+      };
       const awaitingClarification =
         Boolean(state.config.requireClarification) && output.gaps.length > 0;
 
       return {
-        structuredRequirements: output.structuredRequirements,
+        structuredRequirements,
         gaps: output.gaps,
         status: awaitingClarification
           ? "awaiting_clarification"

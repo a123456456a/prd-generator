@@ -67,7 +67,10 @@ describe("buildGraph", () => {
       warnings: [],
     });
     const extractInvoke = vi.fn().mockResolvedValue({
-      structuredRequirements: { goal: "生成 PRD" },
+      productSummary: "生成 PRD",
+      keyFeatures: ["上传材料", "生成 PRD"],
+      targetUsers: ["产品经理"],
+      constraints: [],
       gaps: [],
     });
     const prdInvoke = vi
@@ -113,7 +116,10 @@ describe("buildGraph", () => {
         invoke: vi.fn(),
         withStructuredOutput: () => ({
           invoke: vi.fn().mockResolvedValue({
-            structuredRequirements: { goal: "生成 PRD" },
+            productSummary: "生成 PRD",
+            keyFeatures: ["生成 PRD"],
+            targetUsers: [],
+            constraints: [],
             gaps: ["目标用户是谁？"],
           }),
         }),
@@ -150,7 +156,10 @@ describe("buildGraph", () => {
               invoke: vi.fn(),
               withStructuredOutput: () => ({
                 invoke: vi.fn().mockResolvedValue({
-                  structuredRequirements: {},
+                  productSummary: "工具",
+                  keyFeatures: [],
+                  targetUsers: [],
+                  constraints: [],
                   gaps: [],
                 }),
               }),

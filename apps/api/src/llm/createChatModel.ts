@@ -12,7 +12,13 @@ export type ChatModelOptions = {
   model: string;
   apiKey?: string;
   configuration?: { baseURL: string };
+  /** Extra body fields for OpenAI-compatible providers (e.g. DeepSeek thinking). */
+  modelKwargs?: Record<string, unknown>;
 };
+
+function isDeepSeekBaseUrl(baseUrl: string | null | undefined): boolean {
+  return (baseUrl ?? "").toLowerCase().includes("deepseek");
+}
 
 export function buildChatModelOptions(
   model: string,
@@ -23,6 +29,10 @@ export function buildChatModelOptions(
     ...(config.openaiApiKey ? { apiKey: config.openaiApiKey } : {}),
     ...(config.openaiBaseUrl
       ? { configuration: { baseURL: config.openaiBaseUrl } }
+      : {}),
+    // DeepSeek V4 thinking mode rejects tool_choice used by functionCalling.
+    ...(isDeepSeekBaseUrl(config.openaiBaseUrl)
+      ? { modelKwargs: { thinking: { type: "disabled" } } }
       : {}),
   };
 }

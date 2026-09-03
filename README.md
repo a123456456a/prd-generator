@@ -41,6 +41,8 @@ PRD_MODEL=deepseek-v4-flash
 
 语音 Whisper 转录仍依赖 OpenAI Audio API；仅配 DeepSeek 时语音文件会解析失败，其它材料可继续。
 
+DeepSeek 不支持 OpenAI 的 `json_schema` response_format，且默认 thinking 模式会拒绝 `tool_choice`。本项目在检测到 DeepSeek base URL 时会关闭 thinking，并自动改用 `functionCalling` 结构化输出。也可通过 `STRUCTURED_OUTPUT_METHOD` 强制指定。
+
 生产启动会拒绝空值、`dev-api-key`、`admin-change-me` 和非 Secure
 Cookie。可使用 Node.js 生成高熵凭据：
 

@@ -1,6 +1,7 @@
 import { END, START, StateGraph } from "@langchain/langgraph";
 import { loadConfig } from "../config.js";
 import { createChatModel } from "../llm/createChatModel.js";
+import { structuredOutputOptions } from "../llm/structuredOutput.js";
 import { parseInputs } from "../parsers/index.js";
 import { assertPrototypeHtml } from "../utils/htmlValidate.js";
 import { createExtractRequirementsNode } from "./nodes/extractRequirements.js";
@@ -30,11 +31,35 @@ function afterPrd(
   return state.status === "generating_prototype" ? "generate_prototype" : END;
 }
 
+function createDefaultModelFactory(): (model: string) => GraphModel {
+  const config = loadConfig();
+  const structuredOpts = structuredOutputOptions({
+    openaiBaseUrl: config.openaiBaseUrl,
+    structuredOutputMethod: config.structuredOutputMethod ?? undefined,
+  });
+
+  return (model: string): GraphModel => {
+    const chat = createChatModel(model, config);
+    if (!structuredOpts) {
+      return chat;
+    }
+
+    return {
+      invoke: (input) => chat.invoke(input),
+      withStructuredOutput: (schema) => {
+        const bound = chat.withStructuredOutput?.(schema, structuredOpts);
+        if (!bound) {
+          throw new Error("模型不支持结构化输出");
+        }
+        return bound;
+      },
+    };
+  };
+}
+
 export function buildGraph(deps: GraphDependencies) {
   const config = loadConfig();
-  const modelFactory =
-    deps.modelFactory ??
-    ((model: string): GraphModel => createChatModel(model, config));
+  const modelFactory = deps.modelFactory ?? createDefaultModelFactory();
 
   return new StateGraph(GraphState)
     .addNode(

@@ -15,6 +15,7 @@ describe("buildChatModelOptions", () => {
       model: "deepseek-v4-flash",
       apiKey: "sk-deepseek",
       configuration: { baseURL: "https://api.deepseek.com" },
+      modelKwargs: { thinking: { type: "disabled" } },
     });
   });
 
