@@ -2,6 +2,16 @@ export default {
   app: {
     title: "PRD 生成器",
   },
+  nav: {
+    label: "主导航",
+    workbench: "工作台",
+    providers: "模型提供商",
+    soon: "即将推出",
+    openMenu: "打开菜单",
+    closeMenu: "关闭菜单",
+    collapse: "收起侧边栏",
+    expand: "展开侧边栏",
+  },
   login: {
     title: "登录工作台",
     subtitle: "使用管理员提供的账号继续",
@@ -88,6 +98,20 @@ export default {
       markdown: "下载 PRD Markdown",
       json: "下载 PRD JSON",
       prototype: "下载原型 HTML",
+    },
+  },
+  providers: {
+    eyebrow: "设置",
+    heading: "模型提供商",
+    description: "添加你自己的模型提供商（DeepSeek、智谱、阿里云百炼、OpenAI、Claude 等），Key 加密存储，页面上永不明文展示。",
+    addButton: "新增提供商",
+    comingSoon: {
+      title: "该功能正在开发中",
+      description: "已完成需求与设计梳理，后端 Key 加密存储与前端管理界面即将上线；上线前生成任务将继续使用系统默认模型。",
+    },
+    preview: {
+      label: "界面预览（示意，非真实数据）",
+      default: "默认",
     },
   },
   locale: {

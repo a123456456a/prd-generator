@@ -2,6 +2,16 @@ export default {
   app: {
     title: "PRD Generator",
   },
+  nav: {
+    label: "Main navigation",
+    workbench: "Workbench",
+    providers: "Model providers",
+    soon: "Coming soon",
+    openMenu: "Open menu",
+    closeMenu: "Close menu",
+    collapse: "Collapse sidebar",
+    expand: "Expand sidebar",
+  },
   login: {
     title: "Sign in to the workbench",
     subtitle: "Continue with the account provided by your administrator",
@@ -88,6 +98,20 @@ export default {
       markdown: "Download PRD Markdown",
       json: "Download PRD JSON",
       prototype: "Download prototype HTML",
+    },
+  },
+  providers: {
+    eyebrow: "Settings",
+    heading: "Model providers",
+    description: "Add your own model providers (DeepSeek, Zhipu, Alibaba Cloud, OpenAI, Claude, and more). Keys are encrypted at rest and never shown in plain text.",
+    addButton: "Add provider",
+    comingSoon: {
+      title: "This feature is under construction",
+      description: "Requirements and design are finalized; encrypted key storage and the management UI are coming soon. Generation tasks will keep using the system default model until then.",
+    },
+    preview: {
+      label: "UI preview (illustrative, not real data)",
+      default: "Default",
     },
   },
   locale: {
