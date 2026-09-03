@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { MemorySaver } from "@langchain/langgraph";
 import { buildGraph } from "../graph/workflow.js";
 import type {
   GraphConfig,
@@ -118,8 +119,17 @@ function isTerminalStatus(status: TaskStatus): boolean {
 export class LangGraphRunner implements TaskGraphRunner {
   private readonly graph: CompiledTaskGraph;
 
-  constructor(graph: CompiledTaskGraph = buildGraph() as unknown as CompiledTaskGraph) {
-    this.graph = graph;
+  constructor(
+    graphOrCheckpointer:
+      | CompiledTaskGraph
+      | { checkpointer: unknown } = { checkpointer: new MemorySaver() },
+  ) {
+    this.graph =
+      "stream" in graphOrCheckpointer
+        ? graphOrCheckpointer
+        : (buildGraph({
+            checkpointer: graphOrCheckpointer.checkpointer,
+          }) as unknown as CompiledTaskGraph);
   }
 
   async *run(request: GraphRunRequest): AsyncGenerator<GraphUpdate> {
@@ -244,9 +254,12 @@ export class TaskService {
       runner?: TaskGraphRunner;
       store?: TaskStore;
       config?: AppConfig;
+      checkpointer?: unknown;
     } = {},
   ) {
-    this.runner = options.runner ?? new LangGraphRunner();
+    this.runner =
+      options.runner ??
+      new LangGraphRunner({ checkpointer: options.checkpointer ?? new MemorySaver() });
     this.store = options.store ?? new MemoryTaskStore();
     this.config = options.config ?? loadConfig();
   }

@@ -36,6 +36,7 @@ export type GraphDependencies = {
   parseInputs?: (args: ParseInputsArgs) => Promise<ParseResult>;
   modelFactory?: (model: string) => GraphModel;
   validateHtml?: (html: string) => HtmlValidationResult;
+  checkpointer: unknown;
 };
 
 const overwrite = <T>(current: T, update: T): T => update ?? current;

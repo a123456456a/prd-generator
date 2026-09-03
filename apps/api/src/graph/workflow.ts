@@ -3,7 +3,6 @@ import { END, START, StateGraph } from "@langchain/langgraph";
 import { loadConfig } from "../config.js";
 import { parseInputs } from "../parsers/index.js";
 import { assertPrototypeHtml } from "../utils/htmlValidate.js";
-import { createCheckpointer } from "./checkpointer.js";
 import { createExtractRequirementsNode } from "./nodes/extractRequirements.js";
 import { createGeneratePrdNode } from "./nodes/generatePRD.js";
 import { createGeneratePrototypeNode } from "./nodes/generatePrototype.js";
@@ -31,7 +30,7 @@ function afterPrd(
   return state.status === "generating_prototype" ? "generate_prototype" : END;
 }
 
-export function buildGraph(deps: GraphDependencies = {}) {
+export function buildGraph(deps: GraphDependencies) {
   const config = loadConfig();
   const modelFactory =
     deps.modelFactory ??
@@ -73,7 +72,7 @@ export function buildGraph(deps: GraphDependencies = {}) {
       END,
     ])
     .addEdge("generate_prototype", END)
-    .compile({ checkpointer: createCheckpointer() });
+    .compile({ checkpointer: deps.checkpointer });
 }
 
 export type { GraphDependencies, GraphModel } from "./state.js";

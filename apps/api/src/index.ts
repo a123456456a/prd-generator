@@ -19,11 +19,11 @@ const config = loadConfig();
 if (process.env.NODE_ENV === "production") {
   assertProductionConfig(config);
 }
-const { pool } = await bootstrapPersistence(config);
+const { pool, checkpointer } = await bootstrapPersistence(config);
 const { users, sessions } = createAuthStores(config, pool);
 await seedAdmin(users, config);
 const taskStore = createTaskStore(pool);
-const taskService = new TaskService({ store: taskStore, config });
+const taskService = new TaskService({ store: taskStore, config, checkpointer });
 
 const app = await buildServer({ config, users, sessions, taskService });
 

@@ -1,6 +1,9 @@
+import { MemorySaver } from "@langchain/langgraph";
 import { describe, expect, it, vi } from "vitest";
 import type { StoredFile } from "../../src/storage/types.js";
 import { buildGraph, type GraphModel } from "../../src/graph/workflow.js";
+
+const checkpointer = new MemorySaver();
 
 const rawFile: StoredFile = {
   storageKey: "requirements.txt",
@@ -47,7 +50,7 @@ describe("buildGraph", () => {
       warnings: ["所有输入均解析失败"],
     });
     const modelFactory = vi.fn<() => GraphModel>();
-    const graph = buildGraph({ parseInputs, modelFactory });
+    const graph = buildGraph({ parseInputs, modelFactory, checkpointer });
 
     const result = await graph.invoke({ rawFiles: [rawFile] }, invokeOptions);
 
@@ -87,7 +90,7 @@ describe("buildGraph", () => {
         withStructuredOutput: () => ({ invoke: prdInvoke }),
       };
     });
-    const graph = buildGraph({ parseInputs, modelFactory });
+    const graph = buildGraph({ parseInputs, modelFactory, checkpointer });
 
     const result = await graph.invoke({ rawFiles: [rawFile] }, invokeOptions);
 
@@ -123,6 +126,7 @@ describe("buildGraph", () => {
         warnings: [],
       }),
       modelFactory,
+      checkpointer,
     });
 
     const result = await graph.invoke(
@@ -165,6 +169,7 @@ describe("buildGraph", () => {
         warnings: [],
       }),
       modelFactory,
+      checkpointer,
     });
 
     const result = await graph.invoke(
