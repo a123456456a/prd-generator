@@ -15,8 +15,18 @@ import type { PRD } from "../schemas/prdSchema.js";
 import { type AppConfig, loadConfig } from "../config.js";
 import { AppError } from "../utils/errors.js";
 import type { SseEvent } from "./sse.js";
+import {
+  assertWithinBudget,
+  CONSERVATIVE_NODE_TOKENS,
+  principalKey,
+  utcDay,
+} from "./budget.js";
 import { MemoryTaskStore, type TaskStore } from "./taskStore.js";
 import { InProcessQueue, type TaskQueue } from "./taskQueue.js";
+import {
+  MemoryUsageStore,
+  type UsageStore,
+} from "./usageStore.js";
 
 export type TaskStatus = GraphStatus | "queued" | "running" | "cancelled";
 export type TaskOwner = { kind: "user"; userId: string } | { kind: "apiKey" };
@@ -40,6 +50,22 @@ export interface TaskSnapshot {
 }
 
 export type GraphUpdate = Partial<GraphStateType>;
+
+export type UsageEstimator = (update: GraphUpdate) => number;
+
+/** Conservative per-LLM-node estimate; replace with real usage_metadata when available. */
+export function defaultUsageEstimator(update: GraphUpdate): number {
+  if (Object.hasOwn(update, "structuredRequirements")) {
+    return CONSERVATIVE_NODE_TOKENS;
+  }
+  if (Object.hasOwn(update, "prd") && update.prd !== null) {
+    return CONSERVATIVE_NODE_TOKENS;
+  }
+  if (Object.hasOwn(update, "prototypeHtml") && update.prototypeHtml) {
+    return CONSERVATIVE_NODE_TOKENS;
+  }
+  return 0;
+}
 
 export type GraphRunRequest =
   | {
@@ -248,31 +274,43 @@ export class TaskService {
   private readonly activeRuns = new Set<string>();
   private readonly runner: TaskGraphRunner;
   private readonly store: TaskStore;
+  private readonly usageStore: UsageStore;
   private readonly config: AppConfig;
   private readonly queue: TaskQueue;
+  private readonly usageEstimator: UsageEstimator;
 
   constructor(
     options: {
       runner?: TaskGraphRunner;
       store?: TaskStore;
+      usageStore?: UsageStore;
       config?: AppConfig;
       checkpointer?: unknown;
       queue?: TaskQueue;
+      usageEstimator?: UsageEstimator;
     } = {},
   ) {
     this.runner =
       options.runner ??
       new LangGraphRunner({ checkpointer: options.checkpointer ?? new MemorySaver() });
     this.store = options.store ?? new MemoryTaskStore();
+    this.usageStore = options.usageStore ?? new MemoryUsageStore();
     this.config = options.config ?? loadConfig();
     this.queue =
       options.queue ?? new InProcessQueue(this.config.maxConcurrentTasks);
+    this.usageEstimator = options.usageEstimator ?? defaultUsageEstimator;
   }
 
   async createTask(
     input: CreateTaskBody,
     principal: Principal,
   ): Promise<{ threadId: string }> {
+    await assertWithinBudget(
+      this.usageStore,
+      principalKey(principal),
+      this.config.dailyTokenBudget,
+    );
+
     const threadId = randomUUID();
     const now = new Date().toISOString();
     const config = this.createConfig(input);
@@ -301,6 +339,15 @@ export class TaskService {
     };
     void this.queue.schedule(() => this.execute(request));
     return { threadId };
+  }
+
+  async recordTokenUsage(
+    principalKeyValue: string,
+    tokens: number,
+    day = utcDay(),
+  ): Promise<number> {
+    if (tokens <= 0) return this.usageStore.getTokens(principalKeyValue, day);
+    return this.usageStore.addTokens(principalKeyValue, day, tokens);
   }
 
   async getTask(threadId: string): Promise<TaskSnapshot | undefined> {
@@ -484,6 +531,10 @@ export class TaskService {
     }
     if (task.error) {
       this.emit(task.threadId, "error", { error: task.error });
+    }
+    const tokenDelta = this.usageEstimator(update);
+    if (tokenDelta > 0) {
+      await this.recordTokenUsage(principalKey(task.owner), tokenDelta);
     }
     await this.persist(task);
   }

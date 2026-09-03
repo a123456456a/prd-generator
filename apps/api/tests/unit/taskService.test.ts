@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { loadConfig } from "../../src/config.js";
 import {
   LangGraphRunner,
   TaskService,
@@ -7,6 +8,7 @@ import {
 } from "../../src/services/taskService.js";
 import { MemoryTaskStore } from "../../src/services/taskStore.js";
 import type { TaskQueue } from "../../src/services/taskQueue.js";
+import { MemoryUsageStore } from "../../src/services/usageStore.js";
 import { AppError } from "../../src/utils/errors.js";
 
 const apiKeyPrincipal = { kind: "apiKey" } as const;
@@ -337,6 +339,48 @@ describe("TaskService", () => {
 
     expect(run).not.toHaveBeenCalled();
     expect((await service.getTask(threadId))?.status).toBe("cancelled");
+  });
+
+  it("rejects create when daily token budget is exceeded", async () => {
+    const usageStore = new MemoryUsageStore();
+    const day = new Date().toISOString().slice(0, 10);
+    await usageStore.addTokens("key:api", day, 100);
+    const service = createService({
+      usageStore,
+      config: { ...loadConfig(), dailyTokenBudget: 100 },
+      runner: {
+        async *run() {
+          yield { status: "completed", progress: 100 };
+        },
+      },
+    });
+
+    await expect(
+      service.createTask({ files: [] }, apiKeyPrincipal),
+    ).rejects.toMatchObject({ code: "BUDGET_EXCEEDED" });
+  });
+
+  it("records token usage after graph updates", async () => {
+    const usageStore = new MemoryUsageStore();
+    const service = createService({
+      usageStore,
+      config: { ...loadConfig(), dailyTokenBudget: 0 },
+      runner: {
+        async *run() {
+          yield {
+            status: "generating_prd",
+            progress: 50,
+            structuredRequirements: { goal: "test" },
+          };
+        },
+      },
+    });
+    const day = new Date().toISOString().slice(0, 10);
+
+    await service.createTask({ files: [] }, apiKeyPrincipal);
+    await vi.waitFor(async () => {
+      expect(await usageStore.getTokens("key:api", day)).toBeGreaterThan(0);
+    });
   });
 
   it("starts partial regeneration without reparsing input", async () => {

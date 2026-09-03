@@ -9,6 +9,7 @@ import { REPO_ROOT } from "./paths.js";
 import { buildServer } from "./server.js";
 import { TaskService } from "./services/taskService.js";
 import { createTaskStore } from "./services/taskStore.js";
+import { createUsageStore } from "./services/usageStore.js";
 import { runStartup } from "./startup.js";
 
 const apiRoot = path.resolve(fileURLToPath(new URL("..", import.meta.url)));
@@ -23,7 +24,13 @@ const { pool, checkpointer } = await bootstrapPersistence(config);
 const { users, sessions } = createAuthStores(config, pool);
 await seedAdmin(users, config);
 const taskStore = createTaskStore(pool);
-const taskService = new TaskService({ store: taskStore, config, checkpointer });
+const usageStore = createUsageStore(pool);
+const taskService = new TaskService({
+  store: taskStore,
+  usageStore,
+  config,
+  checkpointer,
+});
 
 const app = await buildServer({ config, users, sessions, taskService });
 

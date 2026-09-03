@@ -1,5 +1,6 @@
 import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from "fastify";
-import { CreateTaskBodySchema } from "../schemas/apiSchema.js";
+import type { Principal } from "../middleware/auth.js";
+import { CreateTaskBodySchema, type CreateTaskBody } from "../schemas/apiSchema.js";
 import { sendSseEvent, writeSseHeaders } from "../services/sse.js";
 import type { TaskService } from "../services/taskService.js";
 import type { Storage, StoredFile } from "../storage/index.js";
@@ -157,13 +158,29 @@ function streamTask(
   reply.raw.on("close", unsubscribe);
 }
 
+async function createTaskWithBudgetCheck(
+  taskService: TaskService,
+  input: CreateTaskBody,
+  principal: Principal,
+): Promise<{ threadId: string }> {
+  try {
+    return await taskService.createTask(input, principal);
+  } catch (error) {
+    if (error instanceof AppError && error.code === "BUDGET_EXCEEDED") {
+      throw new AppError("BUDGET_EXCEEDED", error.message, 429);
+    }
+    throw error;
+  }
+}
+
 export const generateRoutes: FastifyPluginAsync<GenerateRoutesOptions> = async (
   app,
   options,
 ) => {
   app.post("/generate", async (request) => {
     const input = await readGenerateInput(request, options);
-    const { threadId } = await options.taskService.createTask(
+    const { threadId } = await createTaskWithBudgetCheck(
+      options.taskService,
       input,
       requirePrincipal(request),
     );
@@ -172,7 +189,8 @@ export const generateRoutes: FastifyPluginAsync<GenerateRoutesOptions> = async (
 
   app.post("/generate/stream", async (request, reply) => {
     const input = await readGenerateInput(request, options);
-    const { threadId } = await options.taskService.createTask(
+    const { threadId } = await createTaskWithBudgetCheck(
+      options.taskService,
       input,
       requirePrincipal(request),
     );
