@@ -9,7 +9,7 @@ import { MemoryUsageStore } from "../../src/services/usageStore.js";
 describe("budget", () => {
   it("throws BUDGET_EXCEEDED when usage reaches limit", async () => {
     const store = new MemoryUsageStore();
-    await store.addTokens("key:api", "2026-09-03", 100);
+    await store.addTokens("key:api", utcDay(), 100);
     await expect(
       assertWithinBudget(store, "key:api", 100),
     ).rejects.toMatchObject({ code: "BUDGET_EXCEEDED" });
