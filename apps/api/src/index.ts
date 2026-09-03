@@ -51,9 +51,14 @@ const ttlTimer = setInterval(
   60 * 60 * 1000,
 );
 
-process.on("SIGTERM", () => {
+const shutdown = async () => {
   clearInterval(ttlTimer);
-});
+  await app.close();
+  await pool?.end();
+  process.exit(0);
+};
+process.on("SIGTERM", () => void shutdown());
+process.on("SIGINT", () => void shutdown());
 
 try {
   await runStartup(pool, async () => {

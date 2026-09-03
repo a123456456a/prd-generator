@@ -40,3 +40,56 @@ node -e "console.log(require('node:crypto').randomBytes(32).toString('base64url'
 - **脚本/CI**：请求头 `Authorization: Bearer <API_KEY>`。
 
 生产模式下 Fastify 托管 `public/web`；未知客户端路由回退 `index.html`（Vue history mode）。
+
+## 生产部署
+
+Phase C 要求外置 PostgreSQL（Compose **不**包含 Postgres 服务）。在业务机上配置 `.env`（从 `.env.example` 复制），将 `DATABASE_URL` 指向远程库，例如：
+
+```
+DATABASE_URL=postgresql://prd:<password>@10.0.0.15:5432/prd_generator
+```
+
+将 `<password>` 替换为部署机上的真实密码；**不要**把真实连接串提交到仓库。
+
+生产必填项：`NODE_ENV=production`、`DATABASE_URL`、非默认 `API_KEY` / `ADMIN_PASSWORD`、`COOKIE_SECURE=true`，以及 `OPENAI_API_KEY`。
+
+### 方式一：本机进程
+
+```bash
+pnpm install
+pnpm build
+NODE_ENV=production pnpm start
+```
+
+监听 `0.0.0.0:3000`（或 `PORT`）。上传目录默认为仓库内 `uploads/`。
+
+### 方式二：Docker Compose（仅 API）
+
+```bash
+cp .env.example .env   # 编辑 DATABASE_URL 与外置 PG 地址
+docker compose up --build -d
+```
+
+- 服务名 `api`，端口 `3000:3000`
+- 环境变量从 `.env` 加载；`uploads` 持久化在命名卷 `uploads_data`（挂载 `/app/uploads`）
+- 容器内 `DATABASE_URL` 须能访问外置 Postgres（如 `10.0.0.15:5432`）
+
+### 网络与防火墙
+
+- 业务机 → Postgres：放行 TCP `5432`（或实际端口）；Postgres 侧 `pg_hba` 允许业务机 IP
+- 客户端 → API：放行 `3000`（或反向代理后的 HTTPS 端口）
+- 仅内网暴露管理端口；生产 Cookie 需 HTTPS（`COOKIE_SECURE=true`）
+
+### 验收要点（C-0x）
+
+| ID | 场景 | 期望 |
+|------|------|------|
+| C-01 | 无 `DATABASE_URL`（开发） | Memory 路径，行为与升级前一致 |
+| C-02 | 生产缺 `DATABASE_URL` | 启动失败，明确报错 |
+| C-03 | 并发超过 `MAX_CONCURRENT_TASKS` | 多余任务 `queued`，有空位再跑 |
+| C-04 | 日 token 超 `DAILY_TOKEN_BUDGET` | 拒绝或中止，`BUDGET_EXCEEDED` |
+| C-05 | `TASK_TTL_MS` 到期 | 任务、会话、checkpoint 清理 |
+| C-06 | Docker API 连外置 PG | `GET /api/health`、登录、一次 generate 成功 |
+| AC-07 | 中途停止 API 再启动 | 同 `threadId` 可查；审阅态可 resume |
+
+健康检查：`GET /api/health`。容器收到 `SIGTERM`/`SIGINT` 时会停止 TTL 定时器、关闭 HTTP 服务并释放数据库连接池。

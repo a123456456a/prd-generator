@@ -1,0 +1,14 @@
+node_modules
+dist
+apps/api/dist
+public/web
+uploads
+.env
+.env.*
+!.env.example
+.git
+.gitignore
+.superpowers
+tmp-test.*
+*.md
+!README.md
