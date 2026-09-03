@@ -1,6 +1,6 @@
-import { ChatOpenAI } from "@langchain/openai";
 import { END, START, StateGraph } from "@langchain/langgraph";
 import { loadConfig } from "../config.js";
+import { createChatModel } from "../llm/createChatModel.js";
 import { parseInputs } from "../parsers/index.js";
 import { assertPrototypeHtml } from "../utils/htmlValidate.js";
 import { createExtractRequirementsNode } from "./nodes/extractRequirements.js";
@@ -34,8 +34,7 @@ export function buildGraph(deps: GraphDependencies) {
   const config = loadConfig();
   const modelFactory =
     deps.modelFactory ??
-    ((model: string): GraphModel =>
-      new ChatOpenAI({ model }) as unknown as GraphModel);
+    ((model: string): GraphModel => createChatModel(model, config));
 
   return new StateGraph(GraphState)
     .addNode(

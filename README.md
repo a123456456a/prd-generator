@@ -21,9 +21,25 @@ pnpm test         # API 单元测试（pnpm test:web 为前端测试）
 | `NODE_ENV` | 生产部署必须设为 `production` |
 | `ADMIN_USER` / `ADMIN_PASSWORD` | 预置管理员；生产环境必须设置非默认密码 |
 | `API_KEY` | 脚本/自动化用 Bearer 令牌；生产环境必须设置非默认值 |
+| `OPENAI_API_KEY` | LLM Key（OpenAI 或兼容厂商，如 DeepSeek） |
+| `OPENAI_BASE_URL` | 可选；兼容端点，DeepSeek 用 `https://api.deepseek.com` |
+| `EXTRACT_MODEL` / `PRD_MODEL` | 抽取与 PRD 模型名；DeepSeek 可用 `deepseek-v4-flash` |
 | `COOKIE_SECURE` | 生产环境必须设为 `true` |
 | `PORT` | API 端口（默认 `3000`） |
 | `CORS_ORIGIN` | 开发时 Web 源（默认 `http://localhost:5173`） |
+
+### 使用 DeepSeek
+
+DeepSeek 提供 OpenAI 兼容 Chat Completions。在 `.env` 中：
+
+```
+OPENAI_API_KEY=sk-你的DeepSeek密钥
+OPENAI_BASE_URL=https://api.deepseek.com
+EXTRACT_MODEL=deepseek-v4-flash
+PRD_MODEL=deepseek-v4-flash
+```
+
+语音 Whisper 转录仍依赖 OpenAI Audio API；仅配 DeepSeek 时语音文件会解析失败，其它材料可继续。
 
 生产启动会拒绝空值、`dev-api-key`、`admin-change-me` 和非 Secure
 Cookie。可使用 Node.js 生成高熵凭据：

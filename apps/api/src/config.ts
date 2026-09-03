@@ -5,6 +5,8 @@ export type AppConfig = {
   port: number;
   apiKey: string;
   openaiApiKey: string;
+  /** OpenAI-compatible API base URL (e.g. https://api.deepseek.com). */
+  openaiBaseUrl: string | null;
   extractModel: string;
   prdModel: string;
   uploadDir: string;
@@ -56,6 +58,7 @@ export function loadConfig(): AppConfig {
     port: Number(process.env.PORT ?? 3000),
     apiKey: process.env.API_KEY ?? "dev-api-key",
     openaiApiKey: process.env.OPENAI_API_KEY ?? "",
+    openaiBaseUrl: process.env.OPENAI_BASE_URL?.trim() || null,
     extractModel: process.env.EXTRACT_MODEL ?? "gpt-4o-mini",
     prdModel: process.env.PRD_MODEL ?? "gpt-4o",
     uploadDir: resolveRepoPath(process.env.UPLOAD_DIR ?? "uploads"),

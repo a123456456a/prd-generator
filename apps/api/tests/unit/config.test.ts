@@ -1,6 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import {
   assertProductionConfig,
+  loadConfig,
   type AppConfig,
 } from "../../src/config.js";
 
@@ -8,6 +9,7 @@ const baseConfig: AppConfig = {
   port: 3000,
   apiKey: "strong-api-key",
   openaiApiKey: "",
+  openaiBaseUrl: null,
   extractModel: "test-extract",
   prdModel: "test-prd",
   uploadDir: "unused",
@@ -27,6 +29,49 @@ const baseConfig: AppConfig = {
   maxConcurrentTasks: 10,
   dailyTokenBudget: 500_000,
 };
+
+const ENV_KEYS = [
+  "OPENAI_API_KEY",
+  "OPENAI_BASE_URL",
+  "EXTRACT_MODEL",
+  "PRD_MODEL",
+] as const;
+
+const previousEnv = Object.fromEntries(
+  ENV_KEYS.map((key) => [key, process.env[key]]),
+);
+
+afterEach(() => {
+  for (const key of ENV_KEYS) {
+    const value = previousEnv[key];
+    if (value === undefined) {
+      delete process.env[key];
+    } else {
+      process.env[key] = value;
+    }
+  }
+});
+
+describe("loadConfig OpenAI-compatible provider", () => {
+  it("reads DeepSeek-style base URL and model overrides", () => {
+    process.env.OPENAI_API_KEY = "sk-deepseek-test";
+    process.env.OPENAI_BASE_URL = "https://api.deepseek.com";
+    process.env.EXTRACT_MODEL = "deepseek-v4-flash";
+    process.env.PRD_MODEL = "deepseek-v4-pro";
+
+    const config = loadConfig();
+
+    expect(config.openaiApiKey).toBe("sk-deepseek-test");
+    expect(config.openaiBaseUrl).toBe("https://api.deepseek.com");
+    expect(config.extractModel).toBe("deepseek-v4-flash");
+    expect(config.prdModel).toBe("deepseek-v4-pro");
+  });
+
+  it("treats blank OPENAI_BASE_URL as null", () => {
+    process.env.OPENAI_BASE_URL = "   ";
+    expect(loadConfig().openaiBaseUrl).toBeNull();
+  });
+});
 
 describe("assertProductionConfig", () => {
   it.each([
