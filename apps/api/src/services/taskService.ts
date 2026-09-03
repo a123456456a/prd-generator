@@ -16,6 +16,7 @@ import { type AppConfig, loadConfig } from "../config.js";
 import { AppError } from "../utils/errors.js";
 import type { SseEvent } from "./sse.js";
 import { MemoryTaskStore, type TaskStore } from "./taskStore.js";
+import { InProcessQueue, type TaskQueue } from "./taskQueue.js";
 
 export type TaskStatus = GraphStatus | "queued" | "running" | "cancelled";
 export type TaskOwner = { kind: "user"; userId: string } | { kind: "apiKey" };
@@ -248,6 +249,7 @@ export class TaskService {
   private readonly runner: TaskGraphRunner;
   private readonly store: TaskStore;
   private readonly config: AppConfig;
+  private readonly queue: TaskQueue;
 
   constructor(
     options: {
@@ -255,6 +257,7 @@ export class TaskService {
       store?: TaskStore;
       config?: AppConfig;
       checkpointer?: unknown;
+      queue?: TaskQueue;
     } = {},
   ) {
     this.runner =
@@ -262,6 +265,8 @@ export class TaskService {
       new LangGraphRunner({ checkpointer: options.checkpointer ?? new MemorySaver() });
     this.store = options.store ?? new MemoryTaskStore();
     this.config = options.config ?? loadConfig();
+    this.queue =
+      options.queue ?? new InProcessQueue(this.config.maxConcurrentTasks);
   }
 
   async createTask(
@@ -294,9 +299,7 @@ export class TaskService {
       threadId,
       input: { rawFiles: input.files, config },
     };
-    setImmediate(() => {
-      void this.execute(request);
-    });
+    void this.queue.schedule(() => this.execute(request));
     return { threadId };
   }
 

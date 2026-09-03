@@ -6,6 +6,7 @@ import {
   type TaskGraphRunner,
 } from "../../src/services/taskService.js";
 import { MemoryTaskStore } from "../../src/services/taskStore.js";
+import type { TaskQueue } from "../../src/services/taskQueue.js";
 import { AppError } from "../../src/utils/errors.js";
 
 const apiKeyPrincipal = { kind: "apiKey" } as const;
@@ -14,6 +15,21 @@ function createService(
   options: ConstructorParameters<typeof TaskService>[0] = {},
 ) {
   return new TaskService({ store: new MemoryTaskStore(), ...options });
+}
+
+function blockingQueue(gate: ReturnType<typeof deferred<void>>): TaskQueue {
+  return {
+    get pending() {
+      return 0;
+    },
+    get active() {
+      return 0;
+    },
+    schedule: async (fn) => {
+      await gate.promise;
+      return fn();
+    },
+  };
 }
 
 function deferred<T>() {
@@ -119,7 +135,8 @@ describe("TaskService", () => {
         yield { status: "completed", progress: 100, prdMarkdown: "# 完成" };
       },
     };
-    const service = createService({ runner });
+    const gate = deferred<void>();
+    const service = createService({ runner, queue: blockingQueue(gate) });
 
     const result = await service.createTask(
       {
@@ -131,6 +148,7 @@ describe("TaskService", () => {
 
     expect(result.threadId).toEqual(expect.any(String));
     expect((await service.getTask(result.threadId))?.status).toBe("queued");
+    gate.resolve();
     release.resolve();
   });
 
@@ -306,13 +324,15 @@ describe("TaskService", () => {
         yield { status: "completed", progress: 100 };
       })(),
     );
-    const service = createService({ runner: { run } });
+    const gate = deferred<void>();
+    const service = createService({ runner: { run }, queue: blockingQueue(gate) });
     const { threadId } = await service.createTask(
       { files: [] },
       apiKeyPrincipal,
     );
 
     await service.cancelTask(threadId);
+    gate.resolve();
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(run).not.toHaveBeenCalled();
