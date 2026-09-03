@@ -5,6 +5,8 @@ public/web/
 .env.local
 uploads/*
 !uploads/.gitkeep
+outputs/*
+!outputs/.gitkeep
 package-lock.json
 npm-shrinkwrap.json
 yarn.lock

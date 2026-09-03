@@ -1,5 +1,6 @@
 import type { SessionStore } from "../auth/types.js";
 import type { Storage } from "../storage/types.js";
+import type { ArtifactWriter } from "./artifactWriter.js";
 import type { TaskSnapshot } from "./taskService.js";
 import type { TaskStore } from "./taskStore.js";
 
@@ -19,6 +20,8 @@ export interface TtlCleanupArgs {
   taskStore: TaskStore;
   sessionStore?: SessionStore;
   storage: Storage;
+  /** Removes an expired task's persisted deliverables from `outputs/`. Optional for backward compatibility. */
+  artifactWriter?: ArtifactWriter;
   checkpointer: CheckpointerWithDelete;
   now?: Date;
 }
@@ -36,6 +39,7 @@ export async function runTtlCleanup({
   taskStore,
   sessionStore,
   storage,
+  artifactWriter,
   checkpointer,
   now = new Date(),
 }: TtlCleanupArgs): Promise<{ tasksRemoved: number }> {
@@ -49,6 +53,7 @@ export async function runTtlCleanup({
         snapshot.rawFiles.map((file) => storage.remove(file.storageKey)),
       );
     }
+    await artifactWriter?.remove(task.threadId);
     await checkpointer.deleteThread?.(task.threadId);
     await taskStore.delete(task.threadId);
     tasksRemoved++;

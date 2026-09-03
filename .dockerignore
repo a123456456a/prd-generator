@@ -3,6 +3,7 @@ dist
 apps/api/dist
 public/web
 uploads
+outputs
 .env
 .env.*
 !.env.example

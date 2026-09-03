@@ -13,6 +13,7 @@ import { createUsageStore } from "./services/usageStore.js";
 import { runStartup } from "./startup.js";
 import { createStorage } from "./storage/index.js";
 import { runTtlCleanup } from "./services/ttlCleanup.js";
+import { createArtifactWriter } from "./services/artifactWriter.js";
 
 const apiRoot = path.resolve(fileURLToPath(new URL("..", import.meta.url)));
 dotenv.config({ path: path.join(REPO_ROOT, ".env") });
@@ -27,11 +28,13 @@ const { users, sessions } = createAuthStores(config, pool);
 await seedAdmin(users, config);
 const taskStore = createTaskStore(pool);
 const usageStore = createUsageStore(pool);
+const artifactWriter = createArtifactWriter(config.outputDir);
 const taskService = new TaskService({
   store: taskStore,
   usageStore,
   config,
   checkpointer,
+  artifactWriter,
 });
 
 const storage = createStorage(config);
@@ -43,6 +46,7 @@ const ttlTimer = setInterval(
       taskStore,
       sessionStore: sessions,
       storage,
+      artifactWriter,
       checkpointer,
     }).catch((error) => {
       app.log.error(error, "TTL cleanup failed");

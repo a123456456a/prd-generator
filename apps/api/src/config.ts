@@ -8,6 +8,7 @@ export type AppConfig = {
   extractModel: string;
   prdModel: string;
   uploadDir: string;
+  outputDir: string;
   maxFileBytes: number;
   maxTotalBytes: number;
   maxFiles: number;
@@ -59,6 +60,7 @@ export function loadConfig(): AppConfig {
     extractModel: process.env.EXTRACT_MODEL ?? "gpt-4o-mini",
     prdModel: process.env.PRD_MODEL ?? "gpt-4o",
     uploadDir: resolveRepoPath(process.env.UPLOAD_DIR ?? "uploads"),
+    outputDir: resolveRepoPath(process.env.OUTPUT_DIR ?? "outputs"),
     maxFileBytes: 50 * 1024 * 1024,
     maxTotalBytes: 200 * 1024 * 1024,
     maxFiles: 20,
