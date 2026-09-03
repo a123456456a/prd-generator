@@ -11,8 +11,10 @@ import type {
 } from "../schemas/apiSchema.js";
 import type { Principal } from "../middleware/auth.js";
 import type { PRD } from "../schemas/prdSchema.js";
+import { type AppConfig, loadConfig } from "../config.js";
 import { AppError } from "../utils/errors.js";
 import type { SseEvent } from "./sse.js";
+import { MemoryTaskStore, type TaskStore } from "./taskStore.js";
 
 export type TaskStatus = GraphStatus | "queued" | "running" | "cancelled";
 export type TaskOwner = { kind: "user"; userId: string } | { kind: "apiKey" };
@@ -32,6 +34,7 @@ export interface TaskSnapshot {
   structuredRequirements?: unknown;
   createdAt: string;
   updatedAt: string;
+  expiresAt?: string;
 }
 
 export type GraphUpdate = Partial<GraphStateType>;
@@ -104,6 +107,12 @@ function mergePrd(prd: PRD | undefined, patch: Record<string, unknown>): PRD {
 
 function isCancelled(task: TaskSnapshot): boolean {
   return task.status === "cancelled";
+}
+
+const TERMINAL_STATUSES: TaskStatus[] = ["completed", "failed", "cancelled"];
+
+function isTerminalStatus(status: TaskStatus): boolean {
+  return TERMINAL_STATUSES.includes(status);
 }
 
 export class LangGraphRunner implements TaskGraphRunner {
@@ -227,9 +236,19 @@ export class TaskService {
   private readonly subscribers = new Map<string, Set<Subscriber>>();
   private readonly activeRuns = new Set<string>();
   private readonly runner: TaskGraphRunner;
+  private readonly store: TaskStore;
+  private readonly config: AppConfig;
 
-  constructor(options: { runner?: TaskGraphRunner } = {}) {
+  constructor(
+    options: {
+      runner?: TaskGraphRunner;
+      store?: TaskStore;
+      config?: AppConfig;
+    } = {},
+  ) {
     this.runner = options.runner ?? new LangGraphRunner();
+    this.store = options.store ?? new MemoryTaskStore();
+    this.config = options.config ?? loadConfig();
   }
 
   async createTask(
@@ -255,7 +274,7 @@ export class TaskService {
       createdAt: now,
       updatedAt: now,
     };
-    this.tasks.set(threadId, snapshot);
+    await this.persist(snapshot);
 
     const request: GraphRunRequest = {
       kind: "create",
@@ -268,13 +287,20 @@ export class TaskService {
     return { threadId };
   }
 
-  getTask(threadId: string): TaskSnapshot | undefined {
-    const task = this.tasks.get(threadId);
+  async getTask(threadId: string): Promise<TaskSnapshot | undefined> {
+    let task = this.tasks.get(threadId);
+    if (!task) {
+      const stored = await this.store.get(threadId);
+      if (stored) {
+        this.tasks.set(threadId, stored);
+        task = stored;
+      }
+    }
     return task ? { ...task } : undefined;
   }
 
   async resumeTask(threadId: string, body: ResumeTaskBody): Promise<void> {
-    const snapshot = this.requireTask(threadId);
+    const snapshot = await this.requireTask(threadId);
     this.assertNotRunning(threadId);
     this.assertResumable(snapshot, body);
     const checkpointSnapshot = { ...snapshot };
@@ -297,7 +323,7 @@ export class TaskService {
       snapshot.prdMarkdown = "";
       snapshot.prototypeHtml = "";
     }
-    this.prepareForRun(snapshot, body.action === "reject" ? 50 : 75);
+    await this.prepareForRun(snapshot, body.action === "reject" ? 50 : 75);
     await this.execute({
       kind: "resume",
       threadId,
@@ -310,10 +336,10 @@ export class TaskService {
     threadId: string,
     target: "prd" | "prototype",
   ): Promise<void> {
-    const snapshot = this.requireTask(threadId);
+    const snapshot = await this.requireTask(threadId);
     this.assertNotRunning(threadId);
     this.assertRegenerable(snapshot, target);
-    this.prepareForRun(snapshot, target === "prd" ? 50 : 75);
+    await this.prepareForRun(snapshot, target === "prd" ? 50 : 75);
     if (target === "prd") {
       snapshot.prd = undefined;
       snapshot.prdMarkdown = "";
@@ -328,16 +354,19 @@ export class TaskService {
   }
 
   async cancelTask(threadId: string): Promise<void> {
-    const task = this.requireTask(threadId);
+    const task = await this.requireTask(threadId);
     task.status = "cancelled";
     task.updatedAt = new Date().toISOString();
+    await this.persist(task);
     this.emit(threadId, "status", { status: "cancelled" });
     this.emit(threadId, "done", this.resultPayload(task));
     this.subscribers.delete(threadId);
   }
 
   subscribe(threadId: string, send: Subscriber): () => void {
-    this.requireTask(threadId);
+    if (!this.tasks.has(threadId)) {
+      throw new Error(`任务不存在：${threadId}`);
+    }
     const subscribers = this.subscribers.get(threadId) ?? new Set<Subscriber>();
     subscribers.add(send);
     this.subscribers.set(threadId, subscribers);
@@ -361,16 +390,20 @@ export class TaskService {
     };
   }
 
-  private prepareForRun(task: TaskSnapshot, progress: number): void {
+  private async prepareForRun(
+    task: TaskSnapshot,
+    progress: number,
+  ): Promise<void> {
     task.status = "running";
     task.progress = progress;
     task.error = undefined;
     task.updatedAt = new Date().toISOString();
+    await this.persist(task);
     this.emit(task.threadId, "status", { status: task.status });
   }
 
   private async execute(request: GraphRunRequest): Promise<void> {
-    const task = this.requireTask(request.threadId);
+    const task = await this.requireTask(request.threadId);
     if (isCancelled(task)) return;
     if (this.activeRuns.has(request.threadId)) {
       throw new AppError(
@@ -383,13 +416,14 @@ export class TaskService {
     if (task.status === "queued") {
       task.status = "running";
       task.updatedAt = new Date().toISOString();
+      await this.persist(task);
       this.emit(task.threadId, "status", { status: "running" });
     }
 
     try {
       for await (const update of this.runner.run(request)) {
         if (isCancelled(task)) return;
-        this.applyUpdate(task, update);
+        await this.applyUpdate(task, update);
       }
       if (!isCancelled(task)) {
         this.emit(task.threadId, "done", this.resultPayload(task));
@@ -400,6 +434,7 @@ export class TaskService {
       task.progress = 100;
       task.error = error instanceof Error ? error.message : String(error);
       task.updatedAt = new Date().toISOString();
+      await this.persist(task);
       this.emit(task.threadId, "status", { status: "failed" });
       this.emit(task.threadId, "error", { error: task.error });
       this.emit(task.threadId, "done", this.resultPayload(task));
@@ -408,7 +443,10 @@ export class TaskService {
     }
   }
 
-  private applyUpdate(task: TaskSnapshot, update: GraphUpdate): void {
+  private async applyUpdate(
+    task: TaskSnapshot,
+    update: GraphUpdate,
+  ): Promise<void> {
     const previousStatus = task.status;
     const previousProgress = task.progress;
     Object.assign(task, update, { updatedAt: new Date().toISOString() });
@@ -431,6 +469,19 @@ export class TaskService {
     if (task.error) {
       this.emit(task.threadId, "error", { error: task.error });
     }
+    await this.persist(task);
+  }
+
+  private async persist(task: TaskSnapshot): Promise<void> {
+    if (isTerminalStatus(task.status)) {
+      task.expiresAt = new Date(
+        Date.now() + this.config.taskTtlMs,
+      ).toISOString();
+    } else {
+      task.expiresAt = undefined;
+    }
+    this.tasks.set(task.threadId, task);
+    await this.store.save({ ...task });
   }
 
   private resultPayload(task: TaskSnapshot) {
@@ -452,8 +503,15 @@ export class TaskService {
     }
   }
 
-  private requireTask(threadId: string): TaskSnapshot {
-    const task = this.tasks.get(threadId);
+  private async requireTask(threadId: string): Promise<TaskSnapshot> {
+    let task = this.tasks.get(threadId);
+    if (!task) {
+      const stored = await this.store.get(threadId);
+      if (stored) {
+        this.tasks.set(threadId, stored);
+        task = stored;
+      }
+    }
     if (!task) throw new Error(`任务不存在：${threadId}`);
     return task;
   }

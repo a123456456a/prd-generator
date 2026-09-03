@@ -11,20 +11,23 @@ import { AppError } from "../utils/errors.js";
 type ThreadParams = { threadId: string };
 type ThreadRoutesOptions = { taskService: TaskService };
 
-function requireTask(taskService: TaskService, threadId: string): TaskSnapshot {
-  const task = taskService.getTask(threadId);
+async function requireTask(
+  taskService: TaskService,
+  threadId: string,
+): Promise<TaskSnapshot> {
+  const task = await taskService.getTask(threadId);
   if (!task) {
     throw new AppError("TASK_NOT_FOUND", `任务不存在：${threadId}`, 404);
   }
   return task;
 }
 
-function requireAuthorizedTask(
+async function requireAuthorizedTask(
   taskService: TaskService,
   threadId: string,
   principal: Principal | null,
-): TaskSnapshot {
-  const task = requireTask(taskService, threadId);
+): Promise<TaskSnapshot> {
+  const task = await requireTask(taskService, threadId);
   // API keys are trusted automation credentials with global task access.
   if (
     principal?.kind === "apiKey" ||
@@ -101,7 +104,7 @@ export const threadRoutes: FastifyPluginAsync<ThreadRoutesOptions> = async (
   app.get<{ Params: ThreadParams }>(
     "/thread/:threadId/stream",
     async (request, reply) => {
-      const task = requireAuthorizedTask(
+      const task = await requireAuthorizedTask(
         taskService,
         request.params.threadId,
         request.principal,
@@ -114,7 +117,7 @@ export const threadRoutes: FastifyPluginAsync<ThreadRoutesOptions> = async (
   app.post<{ Params: ThreadParams; Body: unknown }>(
     "/thread/:threadId/resume",
     async (request) => {
-      requireAuthorizedTask(
+      await requireAuthorizedTask(
         taskService,
         request.params.threadId,
         request.principal,
@@ -128,7 +131,7 @@ export const threadRoutes: FastifyPluginAsync<ThreadRoutesOptions> = async (
   app.post<{ Params: ThreadParams; Body: unknown }>(
     "/thread/:threadId/regenerate",
     async (request) => {
-      requireAuthorizedTask(
+      await requireAuthorizedTask(
         taskService,
         request.params.threadId,
         request.principal,
@@ -142,7 +145,7 @@ export const threadRoutes: FastifyPluginAsync<ThreadRoutesOptions> = async (
   app.delete<{ Params: ThreadParams }>(
     "/thread/:threadId",
     async (request, reply) => {
-      requireAuthorizedTask(
+      await requireAuthorizedTask(
         taskService,
         request.params.threadId,
         request.principal,
@@ -155,7 +158,7 @@ export const threadRoutes: FastifyPluginAsync<ThreadRoutesOptions> = async (
   app.get<{ Params: ThreadParams }>(
     "/thread/:threadId/export/prd.md",
     async (request, reply) => {
-      const task = requireAuthorizedTask(
+      const task = await requireAuthorizedTask(
         taskService,
         request.params.threadId,
         request.principal,
@@ -170,7 +173,7 @@ export const threadRoutes: FastifyPluginAsync<ThreadRoutesOptions> = async (
   app.get<{ Params: ThreadParams }>(
     "/thread/:threadId/export/prd.json",
     async (request, reply) => {
-      const task = requireAuthorizedTask(
+      const task = await requireAuthorizedTask(
         taskService,
         request.params.threadId,
         request.principal,
@@ -185,7 +188,7 @@ export const threadRoutes: FastifyPluginAsync<ThreadRoutesOptions> = async (
   app.get<{ Params: ThreadParams }>(
     "/thread/:threadId/export/prototype.html",
     async (request, reply) => {
-      const task = requireAuthorizedTask(
+      const task = await requireAuthorizedTask(
         taskService,
         request.params.threadId,
         request.principal,

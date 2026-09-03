@@ -5,9 +5,16 @@ import {
   type GraphRunRequest,
   type TaskGraphRunner,
 } from "../../src/services/taskService.js";
+import { MemoryTaskStore } from "../../src/services/taskStore.js";
 import { AppError } from "../../src/utils/errors.js";
 
 const apiKeyPrincipal = { kind: "apiKey" } as const;
+
+function createService(
+  options: ConstructorParameters<typeof TaskService>[0] = {},
+) {
+  return new TaskService({ store: new MemoryTaskStore(), ...options });
+}
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -112,7 +119,7 @@ describe("TaskService", () => {
         yield { status: "completed", progress: 100, prdMarkdown: "# 完成" };
       },
     };
-    const service = new TaskService({ runner });
+    const service = createService({ runner });
 
     const result = await service.createTask(
       {
@@ -123,7 +130,7 @@ describe("TaskService", () => {
     );
 
     expect(result.threadId).toEqual(expect.any(String));
-    expect(service.getTask(result.threadId)?.status).toBe("queued");
+    expect((await service.getTask(result.threadId))?.status).toBe("queued");
     release.resolve();
   });
 
@@ -141,7 +148,7 @@ describe("TaskService", () => {
         };
       },
     };
-    const service = new TaskService({ runner });
+    const service = createService({ runner });
     const { threadId } = await service.createTask(
       { files: [] },
       apiKeyPrincipal,
@@ -159,7 +166,7 @@ describe("TaskService", () => {
       "result",
       expect.objectContaining({ prdMarkdown: "# PRD" }),
     );
-    expect(service.getTask(threadId)?.status).toBe("completed");
+    expect((await service.getTask(threadId))?.status).toBe("completed");
   });
 
   it("resumes an awaiting review task with edited PRD and cleared stale output", async () => {
@@ -184,13 +191,13 @@ describe("TaskService", () => {
         };
       },
     };
-    const service = new TaskService({ runner });
+    const service = createService({ runner });
     const { threadId } = await service.createTask(
       { files: [] },
       apiKeyPrincipal,
     );
-    await vi.waitFor(() => {
-      expect(service.getTask(threadId)?.status).toBe("awaiting_review");
+    await vi.waitFor(async () => {
+      expect((await service.getTask(threadId))?.status).toBe("awaiting_review");
     });
 
     await service.resumeTask(threadId, {
@@ -204,7 +211,7 @@ describe("TaskService", () => {
         body: { action: "edit", prdPatch: { title: "新标题" } },
       }),
     );
-    expect(service.getTask(threadId)).toEqual(
+    expect(await service.getTask(threadId)).toEqual(
       expect.objectContaining({
         status: "completed",
         prd: expect.objectContaining({ title: "新标题" }),
@@ -224,21 +231,21 @@ describe("TaskService", () => {
         };
       })(),
     );
-    const service = new TaskService({ runner: { run } });
+    const service = createService({ runner: { run } });
     const { threadId } = await service.createTask(
       { files: [] },
       apiKeyPrincipal,
     );
-    await vi.waitFor(() => {
-      expect(service.getTask(threadId)?.status).toBe("completed");
+    await vi.waitFor(async () => {
+      expect((await service.getTask(threadId))?.status).toBe("completed");
     });
-    const before = service.getTask(threadId);
+    const before = await service.getTask(threadId);
 
     await expect(
       service.resumeTask(threadId, { action: "approve" }),
     ).rejects.toBeInstanceOf(AppError);
 
-    expect(service.getTask(threadId)).toEqual(before);
+    expect(await service.getTask(threadId)).toEqual(before);
     expect(run).toHaveBeenCalledTimes(1);
   });
 
@@ -250,13 +257,13 @@ describe("TaskService", () => {
         yield { status: "completed", progress: 100 };
       })(),
     );
-    const service = new TaskService({ runner: { run } });
+    const service = createService({ runner: { run } });
     const { threadId } = await service.createTask(
       { files: [] },
       apiKeyPrincipal,
     );
-    await vi.waitFor(() => {
-      expect(service.getTask(threadId)?.status).toBe("running");
+    await vi.waitFor(async () => {
+      expect((await service.getTask(threadId))?.status).toBe("running");
     });
 
     await expect(service.regenerate(threadId, "prd")).rejects.toMatchObject({
@@ -274,7 +281,7 @@ describe("TaskService", () => {
         yield { status: "completed", progress: 100 };
       },
     };
-    const service = new TaskService({ runner });
+    const service = createService({ runner });
     const { threadId } = await service.createTask(
       { files: [] },
       apiKeyPrincipal,
@@ -286,7 +293,7 @@ describe("TaskService", () => {
     release.resolve();
     await new Promise((resolve) => setTimeout(resolve, 0));
 
-    expect(service.getTask(threadId)?.status).toBe("cancelled");
+    expect((await service.getTask(threadId))?.status).toBe("cancelled");
     expect(send).toHaveBeenCalledWith(
       "status",
       expect.objectContaining({ status: "cancelled" }),
@@ -299,7 +306,7 @@ describe("TaskService", () => {
         yield { status: "completed", progress: 100 };
       })(),
     );
-    const service = new TaskService({ runner: { run } });
+    const service = createService({ runner: { run } });
     const { threadId } = await service.createTask(
       { files: [] },
       apiKeyPrincipal,
@@ -309,7 +316,7 @@ describe("TaskService", () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(run).not.toHaveBeenCalled();
-    expect(service.getTask(threadId)?.status).toBe("cancelled");
+    expect((await service.getTask(threadId))?.status).toBe("cancelled");
   });
 
   it("starts partial regeneration without reparsing input", async () => {
@@ -324,13 +331,13 @@ describe("TaskService", () => {
         };
       },
     };
-    const service = new TaskService({ runner });
+    const service = createService({ runner });
     const { threadId } = await service.createTask(
       { files: [] },
       apiKeyPrincipal,
     );
-    await vi.waitFor(() => {
-      expect(service.getTask(threadId)?.status).toBe("completed");
+    await vi.waitFor(async () => {
+      expect((await service.getTask(threadId))?.status).toBe("completed");
     });
 
     await service.regenerate(threadId, "prototype");

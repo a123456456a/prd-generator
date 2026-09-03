@@ -7,6 +7,8 @@ import { assertProductionConfig, loadConfig } from "./config.js";
 import { bootstrapPersistence } from "./db/bootstrap.js";
 import { REPO_ROOT } from "./paths.js";
 import { buildServer } from "./server.js";
+import { TaskService } from "./services/taskService.js";
+import { createTaskStore } from "./services/taskStore.js";
 import { runStartup } from "./startup.js";
 
 const apiRoot = path.resolve(fileURLToPath(new URL("..", import.meta.url)));
@@ -20,8 +22,10 @@ if (process.env.NODE_ENV === "production") {
 const { pool } = await bootstrapPersistence(config);
 const { users, sessions } = createAuthStores(config, pool);
 await seedAdmin(users, config);
+const taskStore = createTaskStore(pool);
+const taskService = new TaskService({ store: taskStore, config });
 
-const app = await buildServer({ config, users, sessions });
+const app = await buildServer({ config, users, sessions, taskService });
 
 try {
   await runStartup(pool, async () => {

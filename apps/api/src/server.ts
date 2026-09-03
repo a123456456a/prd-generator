@@ -19,6 +19,7 @@ import { generateRoutes } from "./routes/generate.js";
 import { healthRoutes } from "./routes/health.js";
 import { threadRoutes } from "./routes/thread.js";
 import { TaskService } from "./services/taskService.js";
+import { createTaskStore } from "./services/taskStore.js";
 import { createStorage, type Storage } from "./storage/index.js";
 import { AppError } from "./utils/errors.js";
 
@@ -55,7 +56,9 @@ export async function buildServer(
   dependencies: BuildServerDependencies = {},
 ): Promise<FastifyInstance> {
   const config = dependencies.config ?? loadConfig();
-  const taskService = dependencies.taskService ?? new TaskService();
+  const taskService =
+    dependencies.taskService ??
+    new TaskService({ store: createTaskStore(null) });
   const storage = dependencies.storage ?? createStorage(config);
   const users = dependencies.users ?? new MemoryUserStore();
   const sessions = dependencies.sessions ?? new MemorySessionStore();
