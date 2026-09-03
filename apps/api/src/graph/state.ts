@@ -1,4 +1,5 @@
 import { Annotation } from "@langchain/langgraph";
+import type { BaseCheckpointSaver } from "@langchain/langgraph-checkpoint";
 import type { ParseFragment, ParseInputsArgs, ParseResult } from "../parsers/types.js";
 import type { PRD, Language } from "../schemas/prdSchema.js";
 import type { StoredFile } from "../storage/types.js";
@@ -36,7 +37,7 @@ export type GraphDependencies = {
   parseInputs?: (args: ParseInputsArgs) => Promise<ParseResult>;
   modelFactory?: (model: string) => GraphModel;
   validateHtml?: (html: string) => HtmlValidationResult;
-  checkpointer: unknown;
+  checkpointer: BaseCheckpointSaver<number>;
 };
 
 const overwrite = <T>(current: T, update: T): T => update ?? current;

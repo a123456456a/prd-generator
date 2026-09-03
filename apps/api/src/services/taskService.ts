@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { MemorySaver } from "@langchain/langgraph";
+import type { BaseCheckpointSaver } from "@langchain/langgraph-checkpoint";
 import { buildGraph } from "../graph/workflow.js";
 import type {
   GraphConfig,
@@ -149,7 +150,7 @@ export class LangGraphRunner implements TaskGraphRunner {
   constructor(
     graphOrCheckpointer:
       | CompiledTaskGraph
-      | { checkpointer: unknown } = { checkpointer: new MemorySaver() },
+      | { checkpointer: BaseCheckpointSaver<number> } = { checkpointer: new MemorySaver() },
   ) {
     this.graph =
       "stream" in graphOrCheckpointer
@@ -285,7 +286,7 @@ export class TaskService {
       store?: TaskStore;
       usageStore?: UsageStore;
       config?: AppConfig;
-      checkpointer?: unknown;
+      checkpointer?: BaseCheckpointSaver<number>;
       queue?: TaskQueue;
       usageEstimator?: UsageEstimator;
     } = {},
