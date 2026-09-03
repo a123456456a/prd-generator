@@ -19,6 +19,10 @@ export type AppConfig = {
   webDistDir: string;
   publicDir: string;
   corsOrigin: string;
+  databaseUrl: string | null;
+  taskTtlMs: number;
+  maxConcurrentTasks: number;
+  dailyTokenBudget: number;
 };
 
 export function assertProductionConfig(config: AppConfig): void {
@@ -34,6 +38,9 @@ export function assertProductionConfig(config: AppConfig): void {
   }
   if (!config.cookieSecure) {
     errors.push("COOKIE_SECURE must be true");
+  }
+  if (!config.databaseUrl) {
+    errors.push("DATABASE_URL must be set");
   }
   if (errors.length > 0) {
     throw new Error(`Invalid production configuration: ${errors.join("; ")}`);
@@ -65,5 +72,9 @@ export function loadConfig(): AppConfig {
     webDistDir: resolveRepoPath(process.env.WEB_DIST_DIR ?? "public/web"),
     publicDir: resolveRepoPath(process.env.PUBLIC_DIR ?? "public"),
     corsOrigin: process.env.CORS_ORIGIN ?? "http://localhost:5173",
+    databaseUrl: process.env.DATABASE_URL?.trim() || null,
+    taskTtlMs: Number(process.env.TASK_TTL_MS ?? 7 * 24 * 60 * 60 * 1000),
+    maxConcurrentTasks: Number(process.env.MAX_CONCURRENT_TASKS ?? 10),
+    dailyTokenBudget: Number(process.env.DAILY_TOKEN_BUDGET ?? 500_000),
   };
 }

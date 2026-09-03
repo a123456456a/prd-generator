@@ -22,6 +22,10 @@ const baseConfig: AppConfig = {
   webDistDir: "unused",
   publicDir: "unused",
   corsOrigin: "https://example.com",
+  databaseUrl: "postgresql://prd:prd@10.0.0.15:5432/prd_generator",
+  taskTtlMs: 7 * 24 * 60 * 60 * 1000,
+  maxConcurrentTasks: 10,
+  dailyTokenBudget: 500_000,
 };
 
 describe("assertProductionConfig", () => {
@@ -39,5 +43,11 @@ describe("assertProductionConfig", () => {
 
   it("accepts strong credentials with secure cookies", () => {
     expect(() => assertProductionConfig(baseConfig)).not.toThrow();
+  });
+
+  it("rejects missing DATABASE_URL in production config", () => {
+    expect(() =>
+      assertProductionConfig({ ...baseConfig, databaseUrl: null }),
+    ).toThrow(/DATABASE_URL/);
   });
 });
