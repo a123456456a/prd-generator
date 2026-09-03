@@ -1,10 +1,10 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import dotenv from "dotenv";
-import { MemorySessionStore } from "./auth/memorySessionStore.js";
-import { MemoryUserStore } from "./auth/memoryUserStore.js";
+import { createAuthStores } from "./auth/createStores.js";
 import { seedAdmin } from "./auth/seedAdmin.js";
 import { assertProductionConfig, loadConfig } from "./config.js";
+import { bootstrapPersistence } from "./db/bootstrap.js";
 import { REPO_ROOT } from "./paths.js";
 import { buildServer } from "./server.js";
 
@@ -16,8 +16,8 @@ const config = loadConfig();
 if (process.env.NODE_ENV === "production") {
   assertProductionConfig(config);
 }
-const users = new MemoryUserStore();
-const sessions = new MemorySessionStore();
+const { pool } = await bootstrapPersistence(config);
+const { users, sessions } = createAuthStores(config, pool);
 await seedAdmin(users, config);
 
 const app = await buildServer({ config, users, sessions });
