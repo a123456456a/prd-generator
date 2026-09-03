@@ -71,21 +71,23 @@
 
 系统内置一份提供商元数据表，作为前端下拉选项与后端 `baseURL` 自动填充的唯一数据源（后端也要有，避免前端伪造 `baseURL` 绕过白名单）。
 
-| providerId | 展示名 | 默认 `baseURL` | 协议兼容性 | 鉴权头 | 示例模型 | LangChain 客户端 |
+| providerId | 展示名 | 默认 `baseURL` | 协议兼容性 | 鉴权头 | 示例模型 | LangChain.js 接入方式 |
 |---|---|---|---|---|---|---|
-| `openai` | OpenAI | `https://api.openai.com/v1` | 原生 OpenAI | `Authorization: Bearer <key>` | `gpt-4o`、`gpt-4o-mini` | `@langchain/openai` `ChatOpenAI` |
-| `deepseek` | DeepSeek | `https://api.deepseek.com` | OpenAI 兼容 | `Authorization: Bearer <key>` | `deepseek-chat`、`deepseek-reasoner` | `ChatOpenAI`（覆盖 `configuration.baseURL`） |
-| `zhipu` | 智谱 GLM（BigModel） | `https://open.bigmodel.cn/api/paas/v4/` | OpenAI 兼容 | `Authorization: Bearer <key>` | `glm-4.6`、`glm-4.5-air` | `ChatOpenAI`（覆盖 `configuration.baseURL`） |
-| `alibaba` | 阿里云百炼（通义千问 / DashScope） | `https://dashscope.aliyuncs.com/compatible-mode/v1` | OpenAI 兼容 | `Authorization: Bearer <key>` | `qwen-plus`、`qwen-max` | `ChatOpenAI`（覆盖 `configuration.baseURL`） |
-| `anthropic` | Anthropic Claude | `https://api.anthropic.com` | 原生 Anthropic（非 OpenAI 兼容） | `x-api-key: <key>` | `claude-sonnet-4.5`、`claude-opus-4.1` | `@langchain/anthropic` `ChatAnthropic` |
-| `custom_openai` | 自定义（OpenAI 兼容） | 用户手填，必填，需 `https://` | OpenAI 兼容 | `Authorization: Bearer <key>` | 用户手填 | `ChatOpenAI`（覆盖 `configuration.baseURL`） |
+| `openai` | OpenAI | `https://api.openai.com/v1` | 原生 OpenAI | `Authorization: Bearer <key>` | `gpt-4o`、`gpt-4o-mini` | `initChatModel(model, { modelProvider: "openai", apiKey })`（内部即 `@langchain/openai` `ChatOpenAI`） |
+| `deepseek` | DeepSeek | `https://api.deepseek.com` | OpenAI 兼容 | `Authorization: Bearer <key>` | `deepseek-chat`、`deepseek-reasoner` | 优先 `initChatModel(model, { modelProvider: "deepseek", apiKey })`（走官方 `@langchain/deepseek` `ChatDeepSeek`，默认 `baseURL` 已内置为 `https://api.deepseek.com`，且能解析 `reasoning_content`）；不引入该依赖时退化为 `modelProvider: "openai"` + `baseUrl` 覆盖 |
+| `zhipu` | 智谱 GLM（BigModel） | `https://open.bigmodel.cn/api/paas/v4/` | OpenAI 兼容 | `Authorization: Bearer <key>` | `glm-4.6`、`glm-4.5-air` | `initChatModel(model, { modelProvider: "openai", baseUrl, apiKey })`（无官方 LangChain.js 专用包，走 OpenAI 兼容通道） |
+| `alibaba` | 阿里云百炼（通义千问 / DashScope） | `https://dashscope.aliyuncs.com/compatible-mode/v1` | OpenAI 兼容 | `Authorization: Bearer <key>` | `qwen-plus`、`qwen-max` | `initChatModel(model, { modelProvider: "openai", baseUrl, apiKey })`（同上，无官方专用包） |
+| `anthropic` | Anthropic Claude | `https://api.anthropic.com` | 原生 Anthropic（非 OpenAI 兼容） | `x-api-key: <key>` | `claude-sonnet-4.5`、`claude-opus-4.1` | `initChatModel(model, { modelProvider: "anthropic", apiKey })`（内部即 `@langchain/anthropic` `ChatAnthropic`），需新增依赖 `@langchain/anthropic` |
+| `custom_openai` | 自定义（OpenAI 兼容） | 用户手填，必填，需 `https://` | OpenAI 兼容 | `Authorization: Bearer <key>` | 用户手填 | `initChatModel(model, { modelProvider: "openai", baseUrl, apiKey })` |
 
 说明：
 
-1. 前 4 个 + `custom_openai` 均走 OpenAI Chat Completions 协议，只是 `baseURL` 与模型名不同，后端可用同一套 `ChatOpenAI` 适配层处理；仅 `anthropic` 需要单独的 SDK/客户端与鉴权头（`x-api-key` 而非 `Authorization: Bearer`），需新增依赖 `@langchain/anthropic`。
-2. 预置的 `baseURL` 允许被"高级选项"覆盖（例如阿里云百炼的业务空间专属域名 `https://{workspaceId}.{region}.maas.aliyuncs.com/compatible-mode/v1`），但默认值必须是上表中的通用域名，保证零配置可用。
-3. 模型列表本期为**静态预置 + 用户可手填自定义模型名**，不做"调用提供商接口拉取实时模型列表"（避免为拉列表就要求用户先填 Key 才能选模型的先鸡后蛋问题；作为二期增强项）。
-4. Provider Registry 以后端一份 JSON/TS 常量为准（例如 `apps/api/src/services/providerRegistry.ts`），前端通过 `GET /api/providers/catalog` 获取，避免前后端定义漂移。
+1. LangChain.js（`langchain` 包，`^1.5.x`）提供统一工厂函数 **`initChatModel`**（`import { initChatModel } from "langchain/chat_models/universal"`，等价于 Python 版 `init_chat_model`），可通过 `modelProvider` + `model` + `apiKey`/`baseUrl` 等参数动态构建任意受支持提供商的 Chat Model 实例，无需手写 `if/else` 分支去 `new ChatOpenAI(...)` / `new ChatAnthropic(...)`。内置的 `MODEL_PROVIDER_CONFIG` 已经原生支持 `openai`、`anthropic`、`azure_openai`、`deepseek`（`@langchain/deepseek`）、`bedrock`、`google-genai`/`google-vertexai`、`groq`、`mistralai`、`ollama`、`xai`、`cerebras`、`fireworks`、`together`、`perplexity`、`cohere` 等，每个都是"装对应 npm 包即可用"，为后续扩展更多提供商（见 §2.2 Out of Scope 的 Kimi/文心/豆包等）预留了现成路径。
+2. `智谱`、`阿里云百炼` 与用户自定义端点**没有**官方 LangChain.js 专用包，因此统一走 `initChatModel(model, { modelProvider: "openai", baseUrl, apiKey })`（等价于 `new ChatOpenAI({ configuration: { baseURL }, apiKey, model })`）。这与 §4.5 的"OpenAI 兼容协议"判断是一致的：只要协议是 OpenAI Chat Completions 形状，都可以用这一条路径接入，不需要为每个新的 OpenAI 兼容供应商单独写代码，Provider Registry 里新增一条元数据即可。
+3. `initChatModel` 支持 `configurableFields` 让 `model`/`apiKey`/`baseUrl`/`modelProvider` 等参数在**调用时**（而非构造时）通过 `invoke(input, { configurable: {...} })` 传入，非常契合本需求"同一进程内不同请求使用不同用户 Key/不同提供商"的场景——可以在服务启动时构建一个"可配置模型"，每次生成任务按 §4.4 解析出的 `{ modelProvider, model, apiKey, baseUrl }` 通过 `configurable` 传入，避免为每个请求都 `new` 一个新的模型对象。**安全提示**：官方文档明确警告，若把 `configurableFields` 设为 `"any"`，攻击者可借助该配置把请求重定向到任意服务器（等于绕过 Provider Registry 白名单）；本项目**必须**显式枚举 `configurableFields: ["model", "modelProvider", "apiKey", "baseUrl"]`，且 `baseUrl`/`modelProvider` 的取值仍需在服务端按 Provider Registry 校验，不能直接信任客户端传入的任意值。
+4. 预置的 `baseURL` 允许被"高级选项"覆盖（例如阿里云百炼的业务空间专属域名 `https://{workspaceId}.{region}.maas.aliyuncs.com/compatible-mode/v1`），但默认值必须是上表中的通用域名，保证零配置可用。
+5. 模型列表本期为**静态预置 + 用户可手填自定义模型名**，不做"调用提供商接口拉取实时模型列表"（避免为拉列表就要求用户先填 Key 才能选模型的先鸡后蛋问题；作为二期增强项）。
+6. Provider Registry 以后端一份 JSON/TS 常量为准（例如 `apps/api/src/services/providerRegistry.ts`），前端通过 `GET /api/providers/catalog` 获取，避免前后端定义漂移；同一份常量也用来做 `initChatModel` 调用参数（`modelProvider`/`baseUrl` 白名单）的校验依据。
 
 ---
 
@@ -290,10 +292,14 @@ ALTER TABLE tasks ADD COLUMN IF NOT EXISTS provider_credential_id UUID
 2. **`apps/api/src/services/providerRegistry.ts`（新增）**：承载 §3 的预置提供商元数据（唯一数据源），供路由与前端 `catalog` 接口复用。
 3. **`apps/api/src/services/credentialCrypto.ts`（新增）**：封装 AES-256-GCM 加解密与掩码生成的纯函数，供 provider store 使用；单元测试覆盖"加密后无法从密文/掩码反推明文长度或内容"。
 4. **`apps/api/src/auth/*ProviderStore.ts`（新增，Memory + Postgres 两实现）**：CRUD、"仅一个默认"事务、硬删除，模式对齐现有 `memoryUserStore.ts` / `postgresUserStore.ts`。
-5. **`apps/api/src/graph/workflow.ts` / `state.ts`**：`modelFactory` 签名从 `(model: string) => GraphModel` 扩展为可携带 `{ providerId, baseUrl, apiKey, model }`；新增 `anthropic` 分支使用 `@langchain/anthropic`（需在 `apps/api/package.json` 新增依赖），其余走带 `configuration.baseURL` 覆盖的 `ChatOpenAI`。
+5. **`apps/api/src/graph/workflow.ts` / `state.ts`**：`modelFactory` 签名从 `(model: string) => GraphModel` 扩展为可携带 `{ providerId, baseUrl, apiKey, model }`。**推荐实现方式**：不手写 `if (providerId === "anthropic") new ChatAnthropic(...) else new ChatOpenAI(...)` 分支，而是统一调用 LangChain.js 内置的 `initChatModel`（`import { initChatModel } from "langchain/chat_models/universal"`）：
+   - Provider Registry 中每条记录额外标注一个 `langchainModelProvider` 字段（`openai` / `anthropic` / `deepseek`，供 `initChatModel` 使用），`zhipu`/`alibaba`/`custom_openai` 统一映射到 `langchainModelProvider: "openai"` 并传 `baseUrl`。
+   - `modelFactory` 内部即为 `initChatModel(model, { modelProvider: langchainModelProvider, apiKey, baseUrl })`，一套代码覆盖全部预置提供商与自定义端点，新增提供商时只需在 Registry 里加一条数据（若该提供商恰好也有官方 LangChain.js 包，只需把 `langchainModelProvider` 指向它即可获得更完整的功能支持，如 `@langchain/deepseek` 对 `reasoning_content` 的解析）。
+   - 若采用 `configurableFields` 方案（见 §3 说明 3）在运行时切换凭据，需按官方安全提示**显式枚举**允许的字段，并在传入前用 Provider Registry 校验 `modelProvider`/`baseUrl` 是否在白名单内，防止被伪造重定向到非预期端点。
+   - `anthropic` 与可选的 `deepseek` 专用包需要新增依赖：`@langchain/anthropic`（必选，Claude 无 OpenAI 兼容协议）、`@langchain/deepseek`（可选，不加也能用 OpenAI 兼容通道跑通 DeepSeek，只是拿不到 `reasoning_content` 等增强字段）。
 6. **`apps/api/src/services/taskService.ts`**：任务创建时按 §4.5 优先级解析出本次运行要用的凭据，只在内存传递，`tasks.config` 落库时只存 `providerCredentialId` 引用。
 7. **`apps/web`**：新增 `stores/providers.ts`（Pinia）、`views/ProviderSettingsView.vue`、路由项、i18n 词条；`stores/job.ts` 的 `StartGenerateInput`/`options` 增加 `providerCredentialId?` 与模型覆盖字段。
-8. **依赖新增**：`@langchain/anthropic`（Claude 支持）；其余提供商复用现有 `@langchain/openai` + `configuration.baseURL` 覆盖，无需新增 SDK。
+8. **依赖新增**：`@langchain/anthropic`（Claude 支持，必选）；`@langchain/deepseek`（DeepSeek 增强支持，可选）；`zhipu`/`alibaba`/`custom_openai` 复用现有 `@langchain/openai`（经由 `initChatModel(..., { modelProvider: "openai", baseUrl })`），无需新增 SDK。
 
 ---
 
@@ -352,7 +358,7 @@ ALTER TABLE tasks ADD COLUMN IF NOT EXISTS provider_credential_id UUID
 | Q3 | 加密主密钥的轮换/多密钥支持是否要一期做？ | 建议先不做，仅在文档里写清风险与运维手册 |
 | Q4 | 是否需要按 provider/credential 维度的 Token 用量统计（细化现有 `usage_daily`）？ | 二期，本期只需保证任务记录里能追溯到 `provider_credential_id` |
 | Q5 | 阿里云百炼是否要支持"业务空间专属域名"这种带变量的 baseURL 模板，还是只给通用域名？ | 一期给通用域名 + 高级自定义覆盖开关即可满足两种场景 |
-| Q6 | Claude（Anthropic）等非 OpenAI 协议供应商未来若增多，是否要抽象统一的 `ChatModelAdapter` 接口？ | 建议做，`modelFactory` 内部按 `providerId` 分发到不同适配器，为后续供应商预留位置 |
+| Q6 | Claude（Anthropic）等非 OpenAI 协议供应商未来若增多，是否要抽象统一的 `ChatModelAdapter` 接口？ | **已有更优方案，无需自建**：LangChain.js 自带的 `initChatModel`（`langchain/chat_models/universal`）已经是这层统一适配（见 §3 说明 1、§8 第 5 点），`modelFactory` 直接委托给它即可，只需维护 Provider Registry 数据，不必再手写一套 `ChatModelAdapter` |
 
 ---
 
