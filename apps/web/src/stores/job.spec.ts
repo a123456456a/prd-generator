@@ -75,6 +75,52 @@ describe("job store API contracts", () => {
     );
   });
 
+  it("sends a natural-language revision request and applies the returned snapshot", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          threadId: "thread-1",
+          status: "completed",
+          progress: 100,
+          prdMarkdown: "# Updated",
+          conversation: [
+            { role: "user", target: "prd", message: "Change the title", createdAt: "t1" },
+            { role: "assistant", target: "prd", message: "Updated the title", createdAt: "t2" },
+          ],
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      ),
+    );
+    const job = useJobStore();
+    job.threadId = "thread-1";
+
+    await job.revise("prd", "  Change the title  ");
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/thread/thread-1/revise",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ target: "prd", message: "Change the title" }),
+      }),
+    );
+    expect(job.prdMarkdown).toBe("# Updated");
+    expect(job.conversation).toHaveLength(2);
+    expect(job.conversation[1]).toMatchObject({
+      role: "assistant",
+      message: "Updated the title",
+    });
+  });
+
+  it("does not send a revision request for a blank message", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch");
+    const job = useJobStore();
+    job.threadId = "thread-1";
+
+    await job.revise("prd", "   ");
+
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it("uses the centralized unauthorized handler for SSE 401 responses", async () => {
     const unauthorized = vi.fn();
     setUnauthorizedHandler(unauthorized);

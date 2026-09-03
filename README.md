@@ -5,7 +5,8 @@
 ## 产出物落盘
 
 - 上传的原始素材保存在 `uploads/`（`UPLOAD_DIR`，按 `storageKey` 命名）。
-- 智能体生成的最终产出物（`prd.json` / `prd.md` / `prototype.html`）会持久化到 `outputs/<threadId>/`（`OUTPUT_DIR`，默认仓库根 `outputs/`），与数据库/内存中的任务记录同步更新；每次 `regenerate`/`resume` 产生新内容时会覆盖写入最新版本。
+- 智能体生成的最终产出物（`prd.json` / `prd.md` / `prototype.html`）会持久化到 `outputs/<threadId>/`（`OUTPUT_DIR`，默认仓库根 `outputs/`），与数据库/内存中的任务记录同步更新；每次 `regenerate`/`resume`/`revise` 产生新内容时会覆盖写入最新版本。
+- 如果对生成的 PRD 或原型不满意但只想做小调整，无需整份重新生成：`POST /api/thread/:threadId/revise`（`{ target: "prd" | "prototype", message: "自然语言修改意见" }`）会在现有内容基础上做定向修改，并把对话历史记录在任务的 `conversation` 字段中；工作台页面在结果区下方提供了对应的聊天式修改入口。
 - 该目录与 `uploads/` 一样默认被 `.gitignore` 忽略（保留 `.gitkeep`），生产环境通过 Docker 具名卷 `outputs_data` 持久化，任务 TTL 到期时会连同数据库记录一并清理。
 - 仍可通过 `GET /api/thread/:threadId/export/{prd.md,prd.json,prototype.html}` 在线下载，落盘只是额外的持久化与离线可见性保障，不影响既有 API 行为。
 

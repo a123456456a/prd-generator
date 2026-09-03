@@ -90,6 +90,117 @@ describe("TaskService", () => {
     );
   });
 
+  it("revises content directly through the LangGraphRunner without touching the compiled graph", async () => {
+    const graph = { updateState: vi.fn(), stream: vi.fn() };
+    const reviseHandlers = {
+      revisePrd: vi.fn().mockResolvedValue({
+        prd: { title: "新标题" },
+        prdMarkdown: "# 新标题",
+        changeSummary: "已更新标题",
+      }),
+      revisePrototype: vi.fn(),
+    };
+    const runner = new LangGraphRunner(graph as never, reviseHandlers as never);
+    const now = new Date().toISOString();
+
+    const updates = [];
+    for await (const update of runner.run({
+      kind: "revise",
+      threadId: "revise-thread",
+      snapshot: {
+        threadId: "revise-thread",
+        owner: apiKeyPrincipal,
+        status: "completed",
+        progress: 100,
+        prd: { title: "旧标题" } as never,
+        prdMarkdown: "# 旧标题",
+        prototypeHtml: "<!doctype html><html></html>",
+        gaps: [],
+        config: {},
+        extractedText: "需求",
+        conversation: [],
+        createdAt: now,
+        updatedAt: now,
+      },
+      target: "prd",
+      message: "把标题改一下",
+    })) {
+      updates.push(update);
+    }
+
+    expect(graph.updateState).not.toHaveBeenCalled();
+    expect(graph.stream).not.toHaveBeenCalled();
+    expect(reviseHandlers.revisePrd).toHaveBeenCalledWith(
+      { title: "旧标题" },
+      "把标题改一下",
+      [],
+      "zh-CN",
+      undefined,
+    );
+    expect(updates).toEqual([
+      expect.objectContaining({
+        status: "completed",
+        progress: 100,
+        prd: { title: "新标题" },
+        prdMarkdown: "# 新标题",
+        error: undefined,
+      }),
+    ]);
+    expect(updates[0].conversation).toEqual([
+      expect.objectContaining({ role: "user", message: "把标题改一下" }),
+      expect.objectContaining({ role: "assistant", message: "已更新标题" }),
+    ]);
+  });
+
+  it("keeps the task's status and appends an apology turn when a revision fails", async () => {
+    const graph = { updateState: vi.fn(), stream: vi.fn() };
+    const reviseHandlers = {
+      revisePrd: vi.fn().mockResolvedValue({ error: "模型超时" }),
+      revisePrototype: vi.fn(),
+    };
+    const runner = new LangGraphRunner(graph as never, reviseHandlers as never);
+    const now = new Date().toISOString();
+
+    const updates = [];
+    for await (const update of runner.run({
+      kind: "revise",
+      threadId: "revise-thread-2",
+      snapshot: {
+        threadId: "revise-thread-2",
+        owner: apiKeyPrincipal,
+        status: "awaiting_review",
+        progress: 100,
+        prd: { title: "旧标题" } as never,
+        prdMarkdown: "# 旧标题",
+        prototypeHtml: "",
+        gaps: [],
+        config: {},
+        extractedText: "需求",
+        conversation: [],
+        createdAt: now,
+        updatedAt: now,
+      },
+      target: "prd",
+      message: "把标题改一下",
+    })) {
+      updates.push(update);
+    }
+
+    expect(updates).toEqual([
+      expect.objectContaining({
+        status: "awaiting_review",
+        progress: 100,
+        error: "模型超时",
+      }),
+    ]);
+    expect(updates[0].conversation?.[1]).toEqual(
+      expect.objectContaining({
+        role: "assistant",
+        message: expect.stringContaining("模型超时"),
+      }),
+    );
+  });
+
   it("clears the checkpoint PRD when review is rejected", async () => {
     const graph = {
       updateState: vi.fn().mockResolvedValue(undefined),
@@ -411,6 +522,105 @@ describe("TaskService", () => {
     expect(requests[1]).toEqual(
       expect.objectContaining({ kind: "regenerate", target: "prototype" }),
     );
+  });
+
+  it("revises the PRD via a chat message without disrupting the task's status", async () => {
+    const requests: GraphRunRequest[] = [];
+    const runner: TaskGraphRunner = {
+      async *run(request) {
+        requests.push(request);
+        if (request.kind === "create") {
+          yield {
+            status: "completed",
+            progress: 100,
+            prd: { title: "旧标题" } as never,
+            prototypeHtml: "<!doctype html><html></html>",
+          };
+          return;
+        }
+        yield {
+          status: "completed",
+          progress: 100,
+          prd: { title: "新标题" } as never,
+          prdMarkdown: "# 新标题",
+          conversation: [
+            { role: "user", target: "prd", message: "改标题", createdAt: "t1" },
+            { role: "assistant", target: "prd", message: "已更新标题", createdAt: "t2" },
+          ],
+        };
+      },
+    };
+    const service = createService({ runner });
+    const { threadId } = await service.createTask(
+      { files: [] },
+      apiKeyPrincipal,
+    );
+    await vi.waitFor(async () => {
+      expect((await service.getTask(threadId))?.status).toBe("completed");
+    });
+
+    await service.reviseContent(threadId, { target: "prd", message: "改标题" });
+
+    expect(requests[1]).toEqual(
+      expect.objectContaining({
+        kind: "revise",
+        target: "prd",
+        message: "改标题",
+      }),
+    );
+    expect(await service.getTask(threadId)).toEqual(
+      expect.objectContaining({
+        status: "completed",
+        prd: expect.objectContaining({ title: "新标题" }),
+        conversation: expect.arrayContaining([
+          expect.objectContaining({ role: "assistant", message: "已更新标题" }),
+        ]),
+      }),
+    );
+  });
+
+  it("rejects revising a task that has not produced a PRD yet", async () => {
+    const runner: TaskGraphRunner = {
+      async *run() {
+        yield { status: "failed", progress: 100, error: "解析失败" };
+      },
+    };
+    const service = createService({ runner });
+    const { threadId } = await service.createTask(
+      { files: [] },
+      apiKeyPrincipal,
+    );
+    await vi.waitFor(async () => {
+      expect((await service.getTask(threadId))?.status).toBe("failed");
+    });
+
+    await expect(
+      service.reviseContent(threadId, { target: "prd", message: "改一下" }),
+    ).rejects.toMatchObject({ code: "TASK_NOT_REVISABLE" });
+  });
+
+  it("rejects revising the prototype before one has been generated", async () => {
+    const runner: TaskGraphRunner = {
+      async *run() {
+        yield {
+          status: "awaiting_review",
+          progress: 100,
+          prd: { title: "PRD" } as never,
+        };
+      },
+    };
+    const service = createService({ runner });
+    const { threadId } = await service.createTask(
+      { files: [] },
+      apiKeyPrincipal,
+    );
+    await vi.waitFor(async () => {
+      expect((await service.getTask(threadId))?.status).toBe("awaiting_review");
+    });
+
+    await expect(
+      service.reviseContent(threadId, { target: "prototype", message: "改一下" }),
+    ).rejects.toMatchObject({ code: "PROTOTYPE_REQUIRED" });
   });
 
   it("persists deliverables via the artifact writer as they are produced", async () => {

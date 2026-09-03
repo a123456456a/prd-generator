@@ -10,9 +10,11 @@ import type {
 import type {
   CreateTaskBody,
   ResumeTaskBody,
+  ReviseBody,
 } from "../schemas/apiSchema.js";
 import type { Principal } from "../middleware/auth.js";
 import type { PRD } from "../schemas/prdSchema.js";
+import type { ConversationTurn, ReviseTarget } from "../types/conversation.js";
 import { type AppConfig, loadConfig } from "../config.js";
 import { AppError } from "../utils/errors.js";
 import type { SseEvent } from "./sse.js";
@@ -29,6 +31,7 @@ import {
   type UsageStore,
 } from "./usageStore.js";
 import { NoopArtifactWriter, type ArtifactWriter } from "./artifactWriter.js";
+import { buildReviseHandlers, type ReviseHandlers } from "../graph/reviseHandlers.js";
 import { logger } from "../utils/logger.js";
 
 export type TaskStatus = GraphStatus | "queued" | "running" | "cancelled";
@@ -47,12 +50,16 @@ export interface TaskSnapshot {
   config: GraphConfig;
   extractedText: string;
   structuredRequirements?: unknown;
+  /** Natural-language chat history used to make small revisions to the PRD/prototype. */
+  conversation: ConversationTurn[];
   createdAt: string;
   updatedAt: string;
   expiresAt?: string;
 }
 
-export type GraphUpdate = Partial<GraphStateType>;
+export type GraphUpdate = Partial<GraphStateType> & {
+  conversation?: ConversationTurn[];
+};
 
 export type UsageEstimator = (update: GraphUpdate) => number;
 
@@ -87,6 +94,13 @@ export type GraphRunRequest =
       threadId: string;
       snapshot: TaskSnapshot;
       target: "prd" | "prototype";
+    }
+  | {
+      kind: "revise";
+      threadId: string;
+      snapshot: TaskSnapshot;
+      target: ReviseTarget;
+      message: string;
     };
 
 export interface TaskGraphRunner {
@@ -146,13 +160,26 @@ function isTerminalStatus(status: TaskStatus): boolean {
   return TERMINAL_STATUSES.includes(status);
 }
 
+function buildAssistantTurn(
+  target: ReviseTarget,
+  message: string,
+): ConversationTurn {
+  return { role: "assistant", target, message, createdAt: new Date().toISOString() };
+}
+
+function buildUserTurn(target: ReviseTarget, message: string): ConversationTurn {
+  return { role: "user", target, message, createdAt: new Date().toISOString() };
+}
+
 export class LangGraphRunner implements TaskGraphRunner {
   private readonly graph: CompiledTaskGraph;
+  private readonly reviseHandlers: ReviseHandlers;
 
   constructor(
     graphOrCheckpointer:
       | CompiledTaskGraph
       | { checkpointer: BaseCheckpointSaver<number> } = { checkpointer: new MemorySaver() },
+    reviseHandlers?: ReviseHandlers,
   ) {
     this.graph =
       "stream" in graphOrCheckpointer
@@ -160,9 +187,15 @@ export class LangGraphRunner implements TaskGraphRunner {
         : (buildGraph({
             checkpointer: graphOrCheckpointer.checkpointer,
           }) as unknown as CompiledTaskGraph);
+    this.reviseHandlers = reviseHandlers ?? buildReviseHandlers();
   }
 
   async *run(request: GraphRunRequest): AsyncGenerator<GraphUpdate> {
+    if (request.kind === "revise") {
+      yield* this.runRevise(request);
+      return;
+    }
+
     const config = graphConfig(request.threadId);
     if (request.kind === "create") {
       yield* flattenUpdates(await this.graph.stream(request.input, config));
@@ -176,6 +209,86 @@ export class LangGraphRunner implements TaskGraphRunner {
     await this.graph.updateState(config, values, asNode);
     yield values;
     yield* flattenUpdates(await this.graph.stream(null, config));
+  }
+
+  private async *runRevise(request: {
+    threadId: string;
+    snapshot: TaskSnapshot;
+    target: ReviseTarget;
+    message: string;
+  }): AsyncGenerator<GraphUpdate> {
+    const { snapshot, target, message } = request;
+    const history = snapshot.conversation ?? [];
+    const userTurn = buildUserTurn(target, message);
+    const restore: GraphUpdate = {
+      status: snapshot.status as GraphStatus,
+      progress: snapshot.progress,
+    };
+    const fail = (error: string): GraphUpdate => ({
+      ...restore,
+      error,
+      conversation: [
+        ...history,
+        userTurn,
+        buildAssistantTurn(target, `很抱歉，这次修改没有成功：${error}`),
+      ],
+    });
+
+    if (target === "prd") {
+      if (!snapshot.prd) {
+        yield fail("缺少 PRD，无法修改");
+        return;
+      }
+      const outcome = await this.reviseHandlers.revisePrd(
+        snapshot.prd,
+        message,
+        history,
+        snapshot.config.language ?? "zh-CN",
+        snapshot.config.prdModel,
+      );
+      if ("error" in outcome) {
+        yield fail(outcome.error);
+        return;
+      }
+      yield {
+        ...restore,
+        prd: outcome.prd,
+        prdMarkdown: outcome.prdMarkdown,
+        error: undefined,
+        conversation: [
+          ...history,
+          userTurn,
+          buildAssistantTurn(target, outcome.changeSummary),
+        ],
+      };
+      return;
+    }
+
+    if (!snapshot.prd || !snapshot.prototypeHtml) {
+      yield fail("缺少原型，无法修改");
+      return;
+    }
+    const outcome = await this.reviseHandlers.revisePrototype(
+      snapshot.prototypeHtml,
+      snapshot.prd,
+      message,
+      history,
+      snapshot.config.prototypeModel ?? snapshot.config.prdModel,
+    );
+    if ("error" in outcome) {
+      yield fail(outcome.error);
+      return;
+    }
+    yield {
+      ...restore,
+      prototypeHtml: outcome.prototypeHtml,
+      error: undefined,
+      conversation: [
+        ...history,
+        userTurn,
+        buildAssistantTurn(target, outcome.changeSummary),
+      ],
+    };
   }
 
   private resumeState(
@@ -334,6 +447,7 @@ export class TaskService {
       gaps: [],
       config,
       extractedText: "",
+      conversation: [],
       createdAt: now,
       updatedAt: now,
     };
@@ -420,6 +534,36 @@ export class TaskService {
       threadId,
       snapshot: { ...snapshot },
       target,
+    });
+  }
+
+  /**
+   * Applies a small, natural-language chat instruction on top of the
+   * already-generated PRD or prototype, instead of regenerating it from
+   * scratch. Keeps the task's current status; only the targeted artifact and
+   * the conversation history change.
+   */
+  async reviseContent(threadId: string, body: ReviseBody): Promise<void> {
+    const snapshot = await this.requireTask(threadId);
+    this.assertNotRunning(threadId);
+    this.assertRevisable(snapshot, body.target);
+    await assertWithinBudget(
+      this.usageStore,
+      principalKey(snapshot.owner),
+      this.config.dailyTokenBudget,
+    );
+    const checkpointSnapshot = { ...snapshot };
+    snapshot.conversation = [
+      ...snapshot.conversation,
+      { role: "user", target: body.target, message: body.message, createdAt: new Date().toISOString() },
+    ];
+    await this.prepareForRun(snapshot, snapshot.progress);
+    await this.execute({
+      kind: "revise",
+      threadId,
+      snapshot: checkpointSnapshot,
+      target: body.target,
+      message: body.message,
     });
   }
 
@@ -573,6 +717,7 @@ export class TaskService {
       prototypeHtml: task.prototypeHtml,
       error: task.error,
       gaps: task.gaps,
+      conversation: task.conversation,
     };
   }
 
@@ -635,6 +780,22 @@ export class TaskService {
     }
     if (target === "prototype" && !task.prd) {
       throw new AppError("PRD_REQUIRED", "缺少 PRD，无法重新生成原型", 409);
+    }
+  }
+
+  private assertRevisable(task: TaskSnapshot, target: "prd" | "prototype"): void {
+    if (!["completed", "awaiting_review"].includes(task.status)) {
+      throw new AppError(
+        "TASK_NOT_REVISABLE",
+        `任务状态 ${task.status} 不支持自然语言修改`,
+        409,
+      );
+    }
+    if (!task.prd) {
+      throw new AppError("PRD_REQUIRED", "缺少 PRD，无法修改", 409);
+    }
+    if (target === "prototype" && !task.prototypeHtml) {
+      throw new AppError("PROTOTYPE_REQUIRED", "缺少原型，无法修改", 409);
     }
   }
 }

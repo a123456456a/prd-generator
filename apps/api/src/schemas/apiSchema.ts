@@ -42,6 +42,15 @@ export const RegenerateBodySchema = z.object({
   target: z.enum(["prd", "prototype"]),
 });
 
+export const ReviseBodySchema = z.object({
+  target: z.enum(["prd", "prototype"]),
+  message: z
+    .string()
+    .trim()
+    .min(1, "message 不能为空"),
+});
+
 export type CreateTaskBody = z.infer<typeof CreateTaskBodySchema>;
 export type ResumeTaskBody = z.infer<typeof ResumeTaskBodySchema>;
 export type RegenerateBody = z.infer<typeof RegenerateBodySchema>;
+export type ReviseBody = z.infer<typeof ReviseBodySchema>;

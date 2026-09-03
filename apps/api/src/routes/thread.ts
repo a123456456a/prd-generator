@@ -3,6 +3,7 @@ import type { Principal } from "../middleware/auth.js";
 import {
   RegenerateBodySchema,
   ResumeTaskBodySchema,
+  ReviseBodySchema,
 } from "../schemas/apiSchema.js";
 import { sendSseEvent, writeSseHeaders } from "../services/sse.js";
 import type { TaskService, TaskSnapshot } from "../services/taskService.js";
@@ -138,6 +139,20 @@ export const threadRoutes: FastifyPluginAsync<ThreadRoutesOptions> = async (
       );
       const body = parseBody(RegenerateBodySchema, request.body);
       await taskService.regenerate(request.params.threadId, body.target);
+      return taskService.getTask(request.params.threadId);
+    },
+  );
+
+  app.post<{ Params: ThreadParams; Body: unknown }>(
+    "/thread/:threadId/revise",
+    async (request) => {
+      await requireAuthorizedTask(
+        taskService,
+        request.params.threadId,
+        request.principal,
+      );
+      const body = parseBody(ReviseBodySchema, request.body);
+      await taskService.reviseContent(request.params.threadId, body);
       return taskService.getTask(request.params.threadId);
     },
   );
