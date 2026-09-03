@@ -22,6 +22,8 @@ const config: AppConfig = {
   port: 3000,
   apiKey: "test-api-key",
   openaiApiKey: "",
+  openaiBaseUrl: null,
+  structuredOutputMethod: null,
   extractModel: "test-extract",
   prdModel: "test-prd",
   uploadDir: "unused",

@@ -30,6 +30,7 @@ export type GraphModel = {
   invoke(input: string): Promise<unknown>;
   withStructuredOutput?: (
     schema: unknown,
+    options?: { method?: string },
   ) => { invoke(input: string): Promise<unknown> };
 };
 
