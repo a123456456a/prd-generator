@@ -8,6 +8,7 @@ import { setUnauthorizedHandler } from "@/api/client";
 import { useAuthStore } from "@/stores/auth";
 import LoginView from "@/views/LoginView.vue";
 import WorkbenchView from "@/views/WorkbenchView.vue";
+import ProviderSettingsView from "@/views/ProviderSettingsView.vue";
 
 export function createAppRouter(history: RouterHistory = createWebHistory()) {
   const router = createRouter({
@@ -17,12 +18,19 @@ export function createAppRouter(history: RouterHistory = createWebHistory()) {
         path: "/login",
         name: "login",
         component: LoginView,
+        meta: { layout: "bare" },
       },
       {
         path: "/",
         name: "workbench",
         component: WorkbenchView,
-        meta: { requiresAuth: true },
+        meta: { requiresAuth: true, titleKey: "nav.workbench" },
+      },
+      {
+        path: "/settings/providers",
+        name: "providers",
+        component: ProviderSettingsView,
+        meta: { requiresAuth: true, titleKey: "nav.providers" },
       },
       {
         path: "/:pathMatch(.*)*",
